@@ -11,7 +11,6 @@ from .const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
 )
 from .models import Meters, Seconds
@@ -43,7 +42,6 @@ class Settings:
     exit_confirmation_seconds: Seconds
     cooldown_seconds: Seconds
     exit_margin_meters: Meters
-    max_gps_accuracy_meters: Meters
     database_path: str
 
     def __post_init__(self) -> None:
@@ -57,8 +55,6 @@ class Settings:
         for field, value in nonnegative:
             if value < 0:
                 raise SettingsFieldError(field=field)
-        if self.max_gps_accuracy_meters <= 0:
-            raise SettingsFieldError(field=CONF_MAX_GPS_ACCURACY_METERS)
         if not self.database_path.strip():
             raise SettingsFieldError(field=CONF_DATABASE_PATH)
 
@@ -75,9 +71,6 @@ class Settings:
             ),
             cooldown_seconds=Seconds(_read_int(raw, CONF_COOLDOWN_SECONDS)),
             exit_margin_meters=Meters(_read_float(raw, CONF_EXIT_MARGIN_METERS)),
-            max_gps_accuracy_meters=Meters(
-                _read_float(raw, CONF_MAX_GPS_ACCURACY_METERS)
-            ),
             database_path=_read_str(raw, CONF_DATABASE_PATH),
         )
 

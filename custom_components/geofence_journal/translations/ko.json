@@ -11,13 +11,12 @@
           "exit_confirmation_seconds": "이탈 확정 시간(초)",
           "cooldown_seconds": "중복 이벤트 차단 시간(초)",
           "exit_margin_meters": "이탈 여유 거리(미터)",
-          "max_gps_accuracy_meters": "최대 GPS 오차(미터)",
           "database_path": "데이터베이스 경로"
         }
       }
     },
     "error": {
-      "invalid_value": "올바른 값을 입력하세요. 시간과 여유 거리는 음수일 수 없으며 GPS 오차는 0보다 커야 합니다."
+      "invalid_value": "올바른 값을 입력하세요. 시간과 여유 거리는 음수일 수 없습니다."
     },
     "abort": {
       "single_instance_allowed": "Geofence Journal 설정은 하나만 만들 수 있습니다."
@@ -98,7 +97,7 @@
         },
         "exit_margin_meters": {
           "name": "이탈 여유 거리",
-          "description": "장소 반경 바깥에 적용할 0 이상의 히스테리시스 여유 거리(미터)입니다."
+          "description": "장소 반경 바깥에 적용할 0 이상의 히스테리시스 여유 거리(미터)입니다. 비워 두면 통합 기본값을 사용합니다."
         },
         "enabled": {
           "name": "활성화",
@@ -150,15 +149,15 @@
         },
         "enter_confirmation_seconds": {
           "name": "진입 확정 시간",
-          "description": "진입 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다."
+          "description": "진입 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다. 비워 두면 통합 기본값을 사용합니다."
         },
         "exit_confirmation_seconds": {
           "name": "이탈 확정 시간",
-          "description": "이탈 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다."
+          "description": "이탈 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다. 비워 두면 통합 기본값을 사용합니다."
         },
         "cooldown_seconds": {
           "name": "차단 시간",
-          "description": "같은 방향의 반복 이벤트를 억제하는 0 이상의 시간(초)입니다."
+          "description": "같은 방향의 반복 이벤트를 억제하는 0 이상의 시간(초)입니다. 비워 두면 통합 기본값을 사용합니다."
         },
         "max_gps_accuracy_meters": {
           "name": "최대 GPS 오차",

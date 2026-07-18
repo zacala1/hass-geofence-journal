@@ -17,13 +17,11 @@ from custom_components.geofence_journal.const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_ENTER_CONFIRMATION_SECONDS,
     DEFAULT_EXIT_CONFIRMATION_SECONDS,
     DEFAULT_EXIT_MARGIN_METERS,
-    DEFAULT_MAX_GPS_ACCURACY_METERS,
     DOMAIN,
     TITLE,
 )
@@ -39,7 +37,6 @@ def _valid_input(hass: HomeAssistant) -> dict[str, bool | int | float | str]:
         CONF_EXIT_CONFIRMATION_SECONDS: DEFAULT_EXIT_CONFIRMATION_SECONDS,
         CONF_COOLDOWN_SECONDS: DEFAULT_COOLDOWN_SECONDS,
         CONF_EXIT_MARGIN_METERS: DEFAULT_EXIT_MARGIN_METERS,
-        CONF_MAX_GPS_ACCURACY_METERS: DEFAULT_MAX_GPS_ACCURACY_METERS,
         CONF_DATABASE_PATH: hass.config.path(*EXPECTED_DB_SUFFIX.parts),
     }
 
@@ -139,7 +136,6 @@ async def test_repeated_flow_aborts_after_first_flow_creates_entry(
         (CONF_EXIT_CONFIRMATION_SECONDS, -1),
         (CONF_COOLDOWN_SECONDS, -1),
         (CONF_EXIT_MARGIN_METERS, -0.1),
-        (CONF_MAX_GPS_ACCURACY_METERS, 0),
     ],
 )
 @pytest.mark.usefixtures("enable_custom_integrations")

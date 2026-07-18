@@ -11,18 +11,16 @@ import anyio
 from custom_components.geofence_journal.geofence import EvaluatedObservation
 from custom_components.geofence_journal.location import IgnoredObservation
 from custom_components.geofence_journal.models import PresenceState
-from custom_components.geofence_journal.storage.records import (
-    ConfirmedTransition,
-    RuntimeStateRecord,
-)
 
 if TYPE_CHECKING:
     from custom_components.geofence_journal.models import (
         RuleDefinition,
     )
+    from custom_components.geofence_journal.storage.records import RuntimeStateRecord
 
     from .contracts import RuntimeDependencies, RuntimeStorage, ScheduledCall
 
+from .confirmation import build_confirmed_transition
 from .state import (
     RuntimeInvariantError,
     accepted_state_update,
@@ -31,7 +29,6 @@ from .state import (
     confirmation_seconds,
     confirmed_state,
     direction_cooldown,
-    event_type_for,
     privacy_coordinates,
 )
 
@@ -157,6 +154,9 @@ class RuleTransitionEngine:
             )
             self._state = latest
             await self._storage.async_save_runtime_state(latest)
+            deadline = latest.pending_deadline
+            if deadline is not None and self._dependencies.clock.utc_now() >= deadline:
+                await self._confirm_locked(latest.pending_generation)
             return
         await self._begin_pending_locked(state, observation)
 
@@ -219,31 +219,36 @@ class RuleTransitionEngine:
         if now < deadline:
             await self._restore_pending_locked(state)
             return
+        reevaluated = await self._dependencies.confirmation_evaluator.async_evaluate(
+            state
+        )
+        if reevaluated is None:
+            self._scheduled = None
+            return
+        if reevaluated is not target:
+            cancelled = replace(
+                state,
+                pending_transition=None,
+                pending_started_at=None,
+                pending_deadline=None,
+                updated_at=now,
+            )
+            self._state = cancelled
+            await self._storage.async_save_runtime_state(cancelled)
+            self._scheduled = None
+            return
         cooldown = direction_cooldown(state, target)
         if cooldown is not None and now < cooldown:
             corrected = confirmed_state(state, target, now, None, self._rule)
             self._state = corrected
             await self._storage.async_save_runtime_state(corrected)
             return
-        event_id = self._dependencies.event_ids.next_id()
-        confirmed = confirmed_state(state, target, now, event_id, self._rule)
-        event_type = event_type_for(target)
-        transition = ConfirmedTransition(
-            event_id=event_id,
-            rule_id=str(self._rule.rule_id),
-            tracker_id=str(self._rule.tracker_id),
-            place_id=str(self._rule.place_id),
-            journal_id=str(self._rule.journal_id),
-            event_type=event_type,
-            source=self._dependencies.source,
-            target_state=target,
-            occurred_at=started,
-            confirmed_at=now,
-            generation=generation,
-            confirmed_deadline=deadline,
-            coordinates=state.latest_coordinates,
-            accuracy_m=state.latest_accuracy_m,
-            runtime_state=confirmed,
+        confirmed, transition = build_confirmed_transition(
+            self._rule,
+            self._dependencies,
+            state,
+            now,
+            generation,
         )
         result = await self._storage.async_confirm_transition(transition)
         if result.created:

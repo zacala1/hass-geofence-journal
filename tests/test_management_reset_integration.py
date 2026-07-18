@@ -56,7 +56,6 @@ def _settings(path: Path) -> Settings:
         exit_confirmation_seconds=Seconds(0),
         cooldown_seconds=Seconds(0),
         exit_margin_meters=Meters(50),
-        max_gps_accuracy_meters=Meters(100),
         database_path=str(path),
     )
 
@@ -125,9 +124,9 @@ async def test_real_manager_reset_resumes_empty_and_services_remain_reusable(
             exports=registry,
             coordinator=manager,
             clock=manager.clock,
-            store_coordinates=False,
-            refresh_resources=manager.async_refresh_resources,
+            settings=manager.settings,
             schedule_export_cleanup=_ignore_export_cleanup,
+            on_event=manager.record_event,
         ),
     )
     await async_register_services(hass, backend)

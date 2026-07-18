@@ -78,9 +78,6 @@ class EventBackend:
         _ = request
         raise NotImplementedError
 
-    async def async_refresh_resources(self) -> None:
-        raise NotImplementedError
-
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None
     ) -> EventResponse:

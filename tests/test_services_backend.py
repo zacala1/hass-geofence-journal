@@ -18,7 +18,13 @@ from custom_components.geofence_journal.management_backend import (
     ManagementBackendDependencies,
     SQLiteManagementBackend,
 )
-from custom_components.geofence_journal.models import PlaceKind, TrackerKind
+from custom_components.geofence_journal.models import (
+    Meters,
+    PlaceKind,
+    Seconds,
+    TrackerKind,
+)
+from custom_components.geofence_journal.settings import Settings
 from custom_components.geofence_journal.storage import AsyncSQLiteStore
 
 if TYPE_CHECKING:
@@ -62,18 +68,22 @@ async def _backend(
     coordinator = RecordingCoordinator()
     scheduled: list[ExportArtifact] = []
 
-    async def refresh() -> None:
-        coordinator.steps.append("refresh")
-
     backend = SQLiteManagementBackend(
         store,
         ManagementBackendDependencies(
             exports=ExportRegistry(tmp_path / "exports", FakeClock()),
             coordinator=coordinator,
             clock=FakeClock(),
-            store_coordinates=store_coordinates,
-            refresh_resources=refresh,
+            settings=Settings(
+                store_coordinates,
+                Seconds(120),
+                Seconds(180),
+                Seconds(300),
+                Meters(50),
+                str(tmp_path / "backend.db"),
+            ),
             schedule_export_cleanup=scheduled.append,
+            on_event=lambda _occurred_at: None,
         ),
     )
     return backend, store, coordinator, scheduled
@@ -168,6 +178,7 @@ async def test_purge_and_reset_use_pause_refresh_resume_order(
     # Given: one populated backend and a confirmed destructive cutoff.
     backend, store, coordinator, _ = await _backend(tmp_path)
     await _seed(backend)
+    coordinator.steps.clear()
 
     # When: purge and reset run through their lifecycle scopes.
     _ = await backend.async_purge_events(

@@ -58,7 +58,6 @@ EXPECTED_SERVICES: Final = {
 class RegistrationBackend:
     def __init__(self) -> None:
         self.tracker_request: UpsertTrackerRequest | None = None
-        self.refresh_count: int = 0
 
     async def async_upsert_tracker(
         self, request: UpsertTrackerRequest
@@ -76,9 +75,6 @@ class RegistrationBackend:
 
     async def async_upsert_rule(self, request: UpsertRuleRequest) -> ResourceResponse:
         return ResourceResponse(resource_id=request.resource_id or RESOURCE_ID)
-
-    async def async_refresh_resources(self) -> None:
-        self.refresh_count += 1
 
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None
@@ -146,7 +142,7 @@ async def test_unregister_services_removes_every_action(hass: HomeAssistant) -> 
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
-async def test_admin_upsert_returns_json_identifier_and_refreshes_resources(
+async def test_admin_upsert_returns_json_identifier_and_typed_request(
     hass: HomeAssistant, hass_admin_user: MockUser
 ) -> None:
     # Given: an admin context and an injected backend recording typed input.
@@ -163,12 +159,11 @@ async def test_admin_upsert_returns_json_identifier_and_refreshes_resources(
         return_response=True,
     )
 
-    # Then: the handler parsed once, refreshed once, and returned JSON-safe data.
+    # Then: the handler parsed once and returned JSON-safe data.
     assert response == {"resource_id": str(RESOURCE_ID)}
     assert json.loads(json.dumps(response)) == response
     assert backend.tracker_request is not None
     assert backend.tracker_request.entity_id == "person.alice"
-    assert backend.refresh_count == 1
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
@@ -190,7 +185,6 @@ async def test_non_admin_is_rejected_before_backend_invocation(
             return_response=True,
         )
     assert backend.tracker_request is None
-    assert backend.refresh_count == 0
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
@@ -212,4 +206,3 @@ async def test_malformed_service_data_never_reaches_backend(
             return_response=True,
         )
     assert backend.tracker_request is None
-    assert backend.refresh_count == 0

@@ -89,10 +89,6 @@ class ServicesBackend(Protocol):
         """Create or update one linked rule."""
         ...
 
-    async def async_refresh_resources(self) -> None:
-        """Refresh manager-owned runnable resources."""
-        ...
-
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None
     ) -> EventResponse:
@@ -166,7 +162,6 @@ async def _dispatch_resource(
             )
         case _:
             raise RuntimeError(action)
-    await backend.async_refresh_resources()
     return {"resource_id": str(response.resource_id)}
 
 

@@ -87,9 +87,6 @@ class DispatchBackend:
         _ = request
         return ResourceResponse(resource_id=RESOURCE_ID)
 
-    async def async_refresh_resources(self) -> None:
-        self.calls.append("refresh")
-
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None
     ) -> EventResponse:

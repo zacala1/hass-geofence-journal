@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import RLock
 from typing import TYPE_CHECKING, ClassVar, Final, Protocol, final
 from uuid import UUID, uuid4
 
@@ -117,85 +118,95 @@ class ExportArtifact:
 class ExportRegistry:
     """Own short-lived export metadata and safe file cleanup."""
 
-    __slots__ = ("_artifacts", "_clock", "_exports_dir")
+    __slots__ = ("_artifacts", "_clock", "_exports_dir", "_lock")
 
     def __init__(self, exports_dir: Path, clock: ExportClock) -> None:
         """Bind an integration-owned directory and deterministic UTC clock."""
         self._exports_dir = exports_dir
         self._clock = clock
         self._artifacts: dict[str, ExportArtifact] = {}
+        self._lock = RLock()
 
     def allocate(self) -> ExportArtifact:
         """Allocate one safe path behind a fresh opaque identifier."""
-        export_id = uuid4().hex
-        created_at = self._clock.utc_now()
-        self._exports_dir.mkdir(parents=True, exist_ok=True)
-        artifact = ExportArtifact(
-            export_id=export_id,
-            path=self._exports_dir / f"{export_id}.csv",
-            created_at=created_at,
-            expires_at=created_at + EXPORT_LIFETIME,
-            url=f"{DOWNLOAD_PREFIX}/{export_id}",
-        )
-        self._artifacts[export_id] = artifact
-        return artifact
+        with self._lock:
+            export_id = uuid4().hex
+            created_at = self._clock.utc_now()
+            self._exports_dir.mkdir(parents=True, exist_ok=True)
+            artifact = ExportArtifact(
+                export_id=export_id,
+                path=self._exports_dir / f"{export_id}.csv",
+                created_at=created_at,
+                expires_at=created_at + EXPORT_LIFETIME,
+                url=f"{DOWNLOAD_PREFIX}/{export_id}",
+            )
+            self._artifacts[export_id] = artifact
+            return artifact
 
     def resolve(self, export_id: str) -> ExportArtifact | None:
         """Resolve one unexpired opaque identifier."""
-        if len(export_id) != EXPORT_ID_LENGTH or any(
-            character not in "0123456789abcdef" for character in export_id
-        ):
-            return None
-        artifact = self._artifacts.get(export_id)
-        if artifact is None:
-            return None
-        if self._clock.utc_now() >= artifact.expires_at or not artifact.path.is_file():
-            self.discard(export_id)
-            return None
-        return artifact
+        with self._lock:
+            if len(export_id) != EXPORT_ID_LENGTH or any(
+                character not in "0123456789abcdef" for character in export_id
+            ):
+                return None
+            artifact = self._artifacts.get(export_id)
+            if artifact is None:
+                return None
+            if (
+                self._clock.utc_now() >= artifact.expires_at
+                or not artifact.path.is_file()
+            ):
+                self.discard(export_id)
+                return None
+            return artifact
 
     def discard(self, export_id: str) -> None:
         """Forget an artifact and remove its file when present."""
-        artifact = self._artifacts.pop(export_id, None)
-        if artifact is not None:
-            artifact.path.unlink(missing_ok=True)
+        with self._lock:
+            artifact = self._artifacts.pop(export_id, None)
+            if artifact is not None:
+                artifact.path.unlink(missing_ok=True)
 
     def cleanup_expired(self) -> int:
         """Remove every registered artifact at or beyond its expiry."""
-        expired = tuple(
-            export_id
-            for export_id, artifact in self._artifacts.items()
-            if self._clock.utc_now() >= artifact.expires_at
-        )
-        for export_id in expired:
-            self.discard(export_id)
-        return len(expired)
+        with self._lock:
+            expired = tuple(
+                export_id
+                for export_id, artifact in self._artifacts.items()
+                if self._clock.utc_now() >= artifact.expires_at
+            )
+            for export_id in expired:
+                self.discard(export_id)
+            return len(expired)
 
     def discard_all(self) -> None:
         """Invalidate all current URLs and remove every export artifact."""
-        for export_id in tuple(self._artifacts):
-            self.discard(export_id)
-        _removed_orphans = self.cleanup_orphaned_files()
+        with self._lock:
+            for export_id in tuple(self._artifacts):
+                self.discard(export_id)
+            _removed_orphans = self.cleanup_orphaned_files()
 
     def cleanup_orphaned_files(self) -> int:
         """Remove export files whose opaque URLs cannot survive a restart."""
-        if not self._exports_dir.is_dir():
-            return 0
-        protected = {
-            path
-            for artifact in self._artifacts.values()
-            for path in (artifact.path, artifact.path.with_suffix(".tmp"))
-        }
-        orphans = tuple(
-            path
-            for path in self._exports_dir.iterdir()
-            if path not in protected
-            and path.suffix in {".csv", ".tmp"}
-            and path.is_file()
-        )
-        for path in orphans:
-            path.unlink()
-        return len(orphans)
+        with self._lock:
+            if not self._exports_dir.is_dir():
+                return 0
+            protected = {
+                path
+                for artifact in self._artifacts.values()
+                for path in (artifact.path, artifact.path.with_suffix(".tmp"))
+            }
+            orphans = tuple(
+                path
+                for path in self._exports_dir.iterdir()
+                if path not in protected
+                and path.suffix in {".csv", ".tmp"}
+                and path.is_file()
+            )
+            for path in orphans:
+                path.unlink()
+            return len(orphans)
 
 
 def export_journal_csv(

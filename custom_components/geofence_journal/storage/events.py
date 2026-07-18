@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, NewType, final, override
+from datetime import UTC, datetime
+from typing import Literal, NewType, final, override
 from uuid import uuid4
 
 from custom_components.geofence_journal.models import (
@@ -19,9 +20,6 @@ from custom_components.geofence_journal.models import (
 from .db_types import SQLConnection, required_integer, required_text
 from .errors import DatabaseSchemaError
 from .records import utc_text
-
-if TYPE_CHECKING:
-    from datetime import datetime
 
 type ReferenceKind = Literal["journal", "tracker", "place"]
 RevisionId = NewType("RevisionId", str)
@@ -68,6 +66,24 @@ class EventMutationResult:
     revision_id: RevisionId | None
     status: EventStatus
     changed: bool
+
+
+def latest_event_at(connection: SQLConnection) -> datetime | None:
+    """Return the newest retained event instant across all journals."""
+    row = connection.execute(
+        """SELECT occurred_at FROM location_events
+        ORDER BY occurred_at DESC,id DESC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return None
+    text = required_text(row[0], field="location_events.occurred_at")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise DatabaseSchemaError(detail="invalid event timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() != UTC.utcoffset(parsed):
+        raise DatabaseSchemaError(detail="event timestamp must be UTC")
+    return parsed
 
 
 @final

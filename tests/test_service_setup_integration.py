@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 import pytest
 from custom_components.geofence_journal.const import (
@@ -10,7 +10,6 @@ from custom_components.geofence_journal.const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
     DOMAIN,
     TITLE,
@@ -42,11 +41,10 @@ def _entry(path: Path) -> MockConfigEntry:
         title=TITLE,
         data={
             CONF_STORE_COORDINATES: False,
-            CONF_ENTER_CONFIRMATION_SECONDS: 120,
-            CONF_EXIT_CONFIRMATION_SECONDS: 180,
-            CONF_COOLDOWN_SECONDS: 300,
-            CONF_EXIT_MARGIN_METERS: 50.0,
-            CONF_MAX_GPS_ACCURACY_METERS: 200.0,
+            CONF_ENTER_CONFIRMATION_SECONDS: 17,
+            CONF_EXIT_CONFIRMATION_SECONDS: 23,
+            CONF_COOLDOWN_SECONDS: 29,
+            CONF_EXIT_MARGIN_METERS: 37.0,
             CONF_DATABASE_PATH: str(path),
         },
     )
@@ -111,7 +109,6 @@ async def test_admin_actions_build_and_update_one_runnable_rule(
                 "latitude": 37.5,
                 "longitude": 127.0,
                 "radius_meters": 100.0,
-                "exit_margin_meters": 50.0,
             },
         )
         journal_id = await _upsert(
@@ -129,12 +126,23 @@ async def test_admin_actions_build_and_update_one_runnable_rule(
                 "tracker_id": str(tracker_id),
                 "place_id": str(place_id),
                 "journal_id": str(journal_id),
-                "enter_confirmation_seconds": 120,
-                "exit_confirmation_seconds": 180,
-                "cooldown_seconds": 300,
                 "max_gps_accuracy_meters": 200.0,
             },
         )
+        with SQLiteStore(database_path) as defaults_store:
+            stored_defaults = cast(
+                "tuple[int, int, int, float] | None",
+                defaults_store.run_operation(
+                    lambda connection: connection.execute(
+                        """SELECT r.enter_confirmation_seconds,
+                        r.exit_confirmation_seconds,r.cooldown_seconds,
+                        p.exit_margin_m FROM recording_rules r
+                        JOIN places p ON p.id=r.place_id WHERE r.id=?""",
+                        (str(rule_id),),
+                    ).fetchone()
+                ),
+            )
+        assert stored_defaults == (17, 23, 29, 37.0)
         updated_id = await _upsert(
             hass,
             hass_admin_user,

@@ -31,7 +31,7 @@ configuration.
 
 For either method, go to **Settings > Devices & services > Add integration** and
 select **Geofence Journal**. The config flow creates the sole config entry and
-lets the administrator choose confirmation, cooldown, accuracy, privacy, and
+lets the administrator choose confirmation, cooldown, exit-margin, privacy, and
 database settings.
 
 ## Administrator setup

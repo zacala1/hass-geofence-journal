@@ -9,7 +9,6 @@ from custom_components.geofence_journal.const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
 )
 from custom_components.geofence_journal.settings import (
@@ -24,7 +23,6 @@ VALID: Final[dict[str, ConfigValue]] = {
     CONF_EXIT_CONFIRMATION_SECONDS: 1,
     CONF_COOLDOWN_SECONDS: 1,
     CONF_EXIT_MARGIN_METERS: 1.0,
-    CONF_MAX_GPS_ACCURACY_METERS: 1.0,
     CONF_DATABASE_PATH: "journal.db",
 }
 
@@ -36,7 +34,6 @@ VALID: Final[dict[str, ConfigValue]] = {
         (CONF_ENTER_CONFIRMATION_SECONDS, True),
         (CONF_EXIT_CONFIRMATION_SECONDS, 1.5),
         (CONF_EXIT_MARGIN_METERS, False),
-        (CONF_MAX_GPS_ACCURACY_METERS, "wide"),
         (CONF_DATABASE_PATH, 7),
     ],
 )

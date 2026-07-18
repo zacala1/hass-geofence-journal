@@ -25,7 +25,13 @@ from custom_components.geofence_journal.management_backend import (
     ManagementBackendDependencies,
     SQLiteManagementBackend,
 )
-from custom_components.geofence_journal.models import PlaceKind, TrackerKind
+from custom_components.geofence_journal.models import (
+    Meters,
+    PlaceKind,
+    Seconds,
+    TrackerKind,
+)
+from custom_components.geofence_journal.settings import Settings
 from custom_components.geofence_journal.storage import AsyncSQLiteStore
 from custom_components.geofence_journal.storage.events import MissingEventReferenceError
 from pydantic_core import PydanticCustomError
@@ -68,17 +74,14 @@ async def _open_backend(
     ExportRegistry,
     PauseRecorder,
     list[ExportArtifact],
-    list[str],
+    list[datetime],
 ]:
     store = AsyncSQLiteStore(tmp_path / "management.db")
     await store.async_open()
     exports = ExportRegistry(tmp_path / "exports", FixedClock())
     coordinator = PauseRecorder()
     scheduled: list[ExportArtifact] = []
-    refreshes: list[str] = []
-
-    async def refresh() -> None:
-        refreshes.append("refresh")
+    observed_events: list[datetime] = []
 
     backend = SQLiteManagementBackend(
         store,
@@ -86,12 +89,19 @@ async def _open_backend(
             exports=exports,
             coordinator=coordinator,
             clock=FixedClock(),
-            store_coordinates=True,
-            refresh_resources=refresh,
+            settings=Settings(
+                store_coordinates=True,
+                enter_confirmation_seconds=Seconds(120),
+                exit_confirmation_seconds=Seconds(180),
+                cooldown_seconds=Seconds(300),
+                exit_margin_meters=Meters(50),
+                database_path=str(tmp_path / "management.db"),
+            ),
             schedule_export_cleanup=scheduled.append,
+            on_event=observed_events.append,
         ),
     )
-    return backend, store, exports, coordinator, scheduled, refreshes
+    return backend, store, exports, coordinator, scheduled, observed_events
 
 
 async def _seed(backend: SQLiteManagementBackend) -> None:
@@ -119,9 +129,8 @@ async def _seed(backend: SQLiteManagementBackend) -> None:
 
 
 async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) -> None:
-    backend, store, _, coordinator, scheduled, refreshes = await _open_backend(tmp_path)
+    backend, store, _, coordinator, scheduled, observed = await _open_backend(tmp_path)
     await _seed(backend)
-    await backend.async_refresh_resources()
 
     added = await backend.async_add_event(
         AddEventRequest(
@@ -171,14 +180,14 @@ async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) ->
     assert dry_run.matched_events == 1
     assert dry_run.dry_run
     assert compacted.database_bytes_after > 0
-    assert coordinator.pauses == 1
-    assert refreshes == ["refresh"]
+    assert coordinator.pauses == 4
+    assert observed == [NOW]
 
 
 async def test_invalid_invariants_missing_rows_and_failed_export_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    backend, store, exports, _, scheduled, _ = await _open_backend(tmp_path)
+    backend, store, exports, _, scheduled, observed = await _open_backend(tmp_path)
     await _seed(backend)
     invalid_coordinate = UpsertPlaceRequest.model_construct(
         name="Invalid coordinate",
@@ -211,4 +220,5 @@ async def test_invalid_invariants_missing_rows_and_failed_export_cleanup(
     await store.async_close()
 
     assert scheduled == []
+    assert observed == []
     assert exports.cleanup_orphaned_files() == 0

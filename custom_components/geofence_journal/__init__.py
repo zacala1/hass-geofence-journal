@@ -17,7 +17,6 @@ from .const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
     DOMAIN,
 )
@@ -55,7 +54,6 @@ SETTING_FIELDS: Final = (
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_COOLDOWN_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_DATABASE_PATH,
 )
 RETRYABLE_SQLITE_CODES: Final = frozenset(
@@ -117,11 +115,11 @@ async def async_setup_entry(
                 exports=exports,
                 coordinator=manager,
                 clock=manager.clock,
-                store_coordinates=settings.store_coordinates,
-                refresh_resources=manager.async_refresh_resources,
+                settings=settings,
                 schedule_export_cleanup=lambda artifact: _schedule_export_cleanup(
                     hass, manager, exports, artifact
                 ),
+                on_event=manager.record_event,
             ),
         )
         services_registered = True
@@ -200,4 +198,5 @@ def _schedule_export_cleanup(
 
 def _retryable_sqlite(error: sqlite3.OperationalError) -> bool:
     """Identify only temporary lock/path/read-only SQLite failures."""
-    return error.sqlite_errorcode & 0xFF in RETRYABLE_SQLITE_CODES
+    error_code = getattr(error, "sqlite_errorcode", None)
+    return error_code is not None and error_code & 0xFF in RETRYABLE_SQLITE_CODES

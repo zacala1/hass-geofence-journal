@@ -56,9 +56,11 @@ from .storage.maintenance import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Callable
+    from datetime import datetime
     from uuid import UUID
 
+    from .settings import Settings
     from .storage.async_adapter import AsyncSQLiteStore
     from .storage.db_types import SQLConnection
 
@@ -70,9 +72,9 @@ class ManagementBackendDependencies:
     exports: ExportRegistry
     coordinator: MaintenanceCoordinator
     clock: ExportClock
-    store_coordinates: bool
-    refresh_resources: Callable[[], Awaitable[None]]
+    settings: Settings
     schedule_export_cleanup: Callable[[ExportArtifact], None]
+    on_event: Callable[[datetime], None]
 
 
 @final
@@ -83,10 +85,10 @@ class SQLiteManagementBackend:
         "_clock",
         "_coordinator",
         "_exports",
-        "_refresh_resources",
+        "_on_event",
         "_schedule_export_cleanup",
+        "_settings",
         "_store",
-        "_store_coordinates",
     )
 
     def __init__(
@@ -97,45 +99,56 @@ class SQLiteManagementBackend:
         self._exports = dependencies.exports
         self._coordinator = dependencies.coordinator
         self._clock = dependencies.clock
-        self._store_coordinates = dependencies.store_coordinates
-        self._refresh_resources = dependencies.refresh_resources
+        self._settings = dependencies.settings
         self._schedule_export_cleanup = dependencies.schedule_export_cleanup
+        self._on_event = dependencies.on_event
 
     async def async_upsert_tracker(
         self, request: UpsertTrackerRequest
     ) -> ResourceResponse:
         """Create or update one tracker definition."""
-        return await async_upsert_tracker_resource(self._store, self._clock, request)
+        async with self._coordinator.pause_and_drain():
+            return await async_upsert_tracker_resource(
+                self._store, self._clock, request
+            )
 
     async def async_upsert_place(self, request: UpsertPlaceRequest) -> ResourceResponse:
         """Create or update one place definition."""
-        return await async_upsert_place_resource(self._store, self._clock, request)
+        async with self._coordinator.pause_and_drain():
+            return await async_upsert_place_resource(
+                self._store, self._clock, self._settings, request
+            )
 
     async def async_upsert_journal(
         self, request: UpsertJournalRequest
     ) -> ResourceResponse:
         """Create or update one journal definition."""
-        return await async_upsert_journal_resource(self._store, self._clock, request)
+        async with self._coordinator.pause_and_drain():
+            return await async_upsert_journal_resource(
+                self._store, self._clock, request
+            )
 
     async def async_upsert_rule(self, request: UpsertRuleRequest) -> ResourceResponse:
         """Create or update one linked recording rule."""
-        return await async_upsert_rule_resource(self._store, self._clock, request)
-
-    async def async_refresh_resources(self) -> None:
-        """Refresh manager-owned runnable resources exactly when requested."""
-        await self._refresh_resources()
+        async with self._coordinator.pause_and_drain():
+            return await async_upsert_rule_resource(
+                self._store, self._clock, self._settings, request
+            )
 
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None
     ) -> EventResponse:
         """Create one privacy-filtered manual journal event."""
-        return await async_add_manual_event(
+        response = await async_add_manual_event(
             self._store,
             self._clock,
             request,
             user_id,
-            store_coordinates=self._store_coordinates,
+            store_coordinates=self._settings.store_coordinates,
         )
+        if response.changed:
+            self._on_event(request.occurred_at)
+        return response
 
     async def async_exclude_event(
         self, request: ExcludeEventRequest, user_id: str | None
@@ -162,7 +175,7 @@ class SQLiteManagementBackend:
         effective = request.model_copy(
             update={
                 "include_coordinates": (
-                    request.include_coordinates and self._store_coordinates
+                    request.include_coordinates and self._settings.store_coordinates
                 )
             }
         )

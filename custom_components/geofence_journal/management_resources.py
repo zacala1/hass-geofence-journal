@@ -37,6 +37,7 @@ from .storage.resources import (
 
 if TYPE_CHECKING:
     from .export import ExportClock
+    from .settings import Settings
     from .storage.async_adapter import AsyncSQLiteStore
 
 
@@ -60,7 +61,10 @@ async def async_upsert_tracker_resource(
 
 
 async def async_upsert_place_resource(
-    store: AsyncSQLiteStore, clock: ExportClock, request: UpsertPlaceRequest
+    store: AsyncSQLiteStore,
+    clock: ExportClock,
+    settings: Settings,
+    request: UpsertPlaceRequest,
 ) -> ResourceResponse:
     """Build and persist one coordinate or HA Zone place."""
     identifier = request.resource_id or uuid4()
@@ -89,12 +93,17 @@ async def async_upsert_place_resource(
         case unreachable:
             assert_never(unreachable)
     timestamp = clock.utc_now()
+    exit_margin = (
+        settings.exit_margin_meters
+        if request.exit_margin_meters is None
+        else Meters(request.exit_margin_meters)
+    )
     await store.async_run_operation(
         lambda connection: upsert_place(
             connection,
             place,
             timestamp,
-            exit_margin_meters=Meters(request.exit_margin_meters),
+            exit_margin_meters=exit_margin,
             enabled=request.enabled,
         )
     )
@@ -117,7 +126,10 @@ async def async_upsert_journal_resource(
 
 
 async def async_upsert_rule_resource(
-    store: AsyncSQLiteStore, clock: ExportClock, request: UpsertRuleRequest
+    store: AsyncSQLiteStore,
+    clock: ExportClock,
+    settings: Settings,
+    request: UpsertRuleRequest,
 ) -> ResourceResponse:
     """Build and persist one rule after SQLite validates all references."""
     identifier = request.resource_id or uuid4()
@@ -127,9 +139,21 @@ async def async_upsert_rule_resource(
         place_id=PlaceId(str(request.place_id)),
         journal_id=JournalId(str(request.journal_id)),
         enabled=request.enabled,
-        enter_confirmation_seconds=Seconds(request.enter_confirmation_seconds),
-        exit_confirmation_seconds=Seconds(request.exit_confirmation_seconds),
-        cooldown_seconds=Seconds(request.cooldown_seconds),
+        enter_confirmation_seconds=Seconds(
+            settings.enter_confirmation_seconds
+            if request.enter_confirmation_seconds is None
+            else request.enter_confirmation_seconds
+        ),
+        exit_confirmation_seconds=Seconds(
+            settings.exit_confirmation_seconds
+            if request.exit_confirmation_seconds is None
+            else request.exit_confirmation_seconds
+        ),
+        cooldown_seconds=Seconds(
+            settings.cooldown_seconds
+            if request.cooldown_seconds is None
+            else request.cooldown_seconds
+        ),
         exit_margin_meters=Meters(0),
         max_gps_accuracy_meters=Meters(request.max_gps_accuracy_meters),
     )

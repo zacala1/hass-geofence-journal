@@ -72,7 +72,7 @@ class UpsertPlaceRequest(ServiceRequest):
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     radius_meters: float | None = Field(default=None, gt=0)
-    exit_margin_meters: float = Field(default=50, ge=0)
+    exit_margin_meters: float | None = Field(default=None, ge=0)
     enabled: bool = True
 
     @model_validator(mode="after")
@@ -122,9 +122,9 @@ class UpsertRuleRequest(ServiceRequest):
     tracker_id: ServiceUUID
     place_id: ServiceUUID
     journal_id: ServiceUUID
-    enter_confirmation_seconds: int = Field(default=120, ge=0)
-    exit_confirmation_seconds: int = Field(default=180, ge=0)
-    cooldown_seconds: int = Field(default=300, ge=0)
+    enter_confirmation_seconds: int | None = Field(default=None, ge=0)
+    exit_confirmation_seconds: int | None = Field(default=None, ge=0)
+    cooldown_seconds: int | None = Field(default=None, ge=0)
     max_gps_accuracy_meters: float = Field(default=200, gt=0)
     enabled: bool = True
 

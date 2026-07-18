@@ -11,13 +11,12 @@
           "exit_confirmation_seconds": "Exit confirmation (seconds)",
           "cooldown_seconds": "Duplicate-event cooldown (seconds)",
           "exit_margin_meters": "Exit margin (meters)",
-          "max_gps_accuracy_meters": "Maximum GPS inaccuracy (meters)",
           "database_path": "Database path"
         }
       }
     },
     "error": {
-      "invalid_value": "Enter a valid value. Timing and margin values cannot be negative, and GPS accuracy must be greater than zero."
+      "invalid_value": "Enter a valid value. Timing and margin values cannot be negative."
     },
     "abort": {
       "single_instance_allowed": "Only one Geofence Journal configuration is supported."
@@ -98,7 +97,7 @@
         },
         "exit_margin_meters": {
           "name": "Exit margin",
-          "description": "Non-negative hysteresis margin outside the place radius, in meters."
+          "description": "Non-negative hysteresis margin outside the place radius, in meters. Leave empty to use the integration default."
         },
         "enabled": {
           "name": "Enabled",
@@ -150,15 +149,15 @@
         },
         "enter_confirmation_seconds": {
           "name": "Enter confirmation",
-          "description": "Non-negative seconds an enter candidate must remain valid."
+          "description": "Non-negative seconds an enter candidate must remain valid. Leave empty to use the integration default."
         },
         "exit_confirmation_seconds": {
           "name": "Exit confirmation",
-          "description": "Non-negative seconds an exit candidate must remain valid."
+          "description": "Non-negative seconds an exit candidate must remain valid. Leave empty to use the integration default."
         },
         "cooldown_seconds": {
           "name": "Cooldown",
-          "description": "Non-negative seconds that suppress repeated same-direction events."
+          "description": "Non-negative seconds that suppress repeated same-direction events. Leave empty to use the integration default."
         },
         "max_gps_accuracy_meters": {
           "name": "Maximum GPS inaccuracy",

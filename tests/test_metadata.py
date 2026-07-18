@@ -24,7 +24,6 @@ class ConfigData(TypedDict):
     exit_confirmation_seconds: str
     cooldown_seconds: str
     exit_margin_meters: str
-    max_gps_accuracy_meters: str
     database_path: str
 
 
@@ -84,7 +83,6 @@ def test_translation_files_expose_every_config_field() -> None:
             "exit_confirmation_seconds",
             "cooldown_seconds",
             "exit_margin_meters",
-            "max_gps_accuracy_meters",
             "database_path",
         }
     )

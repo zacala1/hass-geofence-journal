@@ -4,20 +4,23 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, assert_never, final
+from typing import TYPE_CHECKING, Final, final
 
 from homeassistant.const import ATTR_GPS_ACCURACY, ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.helpers.event import async_track_state_change_event
 from pydantic import ConfigDict, TypeAdapter, ValidationError
 
-from .geofence import EvaluationThresholds, HaversineDistance, evaluate_geofence
+from .geofence import (
+    EvaluatedObservation,
+    EvaluationThresholds,
+    HaversineDistance,
+    evaluate_geofence,
+)
 from .location import (
     IgnoredObservation,
     IgnoreReason,
-    NormalizedObservation,
     RawNumber,
     RawTrackerObservation,
-    ResolvedPlace,
     ZoneSnapshot,
     normalize_tracker_observation,
     resolve_place,
@@ -36,6 +39,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.event import EventStateChangedData
 
     from .runtime.engine import RuleTransitionEngine
+    from .storage.records import RuntimeStateRecord
     from .storage.resources import ConfiguredResources
 
 
@@ -79,6 +83,39 @@ def normalize_ha_tracker_state(
         longitude=_raw_number(state, ATTR_LONGITUDE),
         accuracy_m=_raw_number(state, ATTR_GPS_ACCURACY),
         state=state.state,
+    )
+
+
+def evaluate_ha_tracker_state(
+    state: State,
+    resources: ConfiguredResources,
+    runtime_state: RuntimeStateRecord | None,
+    zones: HomeAssistantZoneLookup,
+    distance: HaversineDistance,
+) -> EvaluatedObservation | IgnoredObservation:
+    """Evaluate one current HA state with fresh place geometry."""
+    boundary = normalize_ha_tracker_state(state, resources.tracker.kind)
+    if isinstance(boundary, IgnoredObservation):
+        return boundary
+    last_at = None if runtime_state is None else runtime_state.last_processed_at
+    normalized = normalize_tracker_observation(boundary, last_accepted_at=last_at)
+    if isinstance(normalized, IgnoredObservation):
+        return normalized
+    resolved = resolve_place(resources.place, zones, observed_at=normalized.observed_at)
+    if isinstance(resolved, IgnoredObservation):
+        return resolved
+    confirmed = (
+        PresenceState.UNKNOWN if runtime_state is None else runtime_state.presence_state
+    )
+    return evaluate_geofence(
+        normalized,
+        resolved,
+        confirmed,
+        EvaluationThresholds(
+            exit_margin_m=resources.rule.exit_margin_meters,
+            max_accuracy_m=resources.rule.max_gps_accuracy_meters,
+        ),
+        distance=distance,
     )
 
 
@@ -150,55 +187,14 @@ class GeofenceTrackerListener:
             await self._async_process_runtime(runtime, state)
 
     async def _async_process_runtime(self, runtime: RuleRuntime, state: State) -> None:
-        boundary = normalize_ha_tracker_state(state, runtime.resources.tracker.kind)
-        match boundary:
-            case IgnoredObservation() as ignored:
-                await runtime.engine.async_observe(ignored)
-                return
-            case RawTrackerObservation() as raw:
-                current = runtime.engine.current_state
-                last_at = None if current is None else current.last_processed_at
-                normalized = normalize_tracker_observation(
-                    raw, last_accepted_at=last_at
-                )
-            case unreachable:
-                assert_never(unreachable)
-        match normalized:
-            case IgnoredObservation() as ignored:
-                await runtime.engine.async_observe(ignored)
-            case NormalizedObservation() as accepted:
-                resolved = resolve_place(
-                    runtime.resources.place,
-                    self._zones,
-                    observed_at=accepted.observed_at,
-                )
-                match resolved:
-                    case IgnoredObservation() as ignored:
-                        await runtime.engine.async_observe(ignored)
-                    case ResolvedPlace() as geometry:
-                        current = runtime.engine.current_state
-                        confirmed = (
-                            PresenceState.UNKNOWN
-                            if current is None
-                            else current.presence_state
-                        )
-                        evaluated = evaluate_geofence(
-                            accepted,
-                            geometry,
-                            confirmed,
-                            EvaluationThresholds(
-                                exit_margin_m=runtime.resources.rule.exit_margin_meters,
-                                max_accuracy_m=(
-                                    runtime.resources.rule.max_gps_accuracy_meters
-                                ),
-                            ),
-                            distance=self._distance,
-                        )
-                        await runtime.engine.async_observe(evaluated)
-                    case unreachable:
-                        assert_never(unreachable)
-            case unreachable:
-                assert_never(unreachable)
+        evaluated = evaluate_ha_tracker_state(
+            state,
+            runtime.resources,
+            runtime.engine.current_state,
+            self._zones,
+            self._distance,
+        )
+        await runtime.engine.async_observe(evaluated)
 
 
 def _raw_number(state: State, attribute: str) -> RawNumber:

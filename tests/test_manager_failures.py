@@ -36,7 +36,6 @@ def _settings(path: Path) -> Settings:
         exit_confirmation_seconds=Seconds(0),
         cooldown_seconds=Seconds(0),
         exit_margin_meters=Meters(50),
-        max_gps_accuracy_meters=Meters(100),
         database_path=str(path),
     )
 

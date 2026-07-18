@@ -8,7 +8,11 @@ from typing import TYPE_CHECKING, Protocol, final
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from custom_components.geofence_journal.models import Clock, LocationSource
+    from custom_components.geofence_journal.models import (
+        Clock,
+        LocationSource,
+        PresenceState,
+    )
     from custom_components.geofence_journal.storage.records import (
         ConfirmedTransition,
         RuntimeStateRecord,
@@ -50,6 +54,23 @@ class TransitionObserver(Protocol):
     ) -> None:
         """Handle one created transition after its atomic commit."""
         ...
+
+
+class ConfirmationEvaluator(Protocol):
+    """Re-evaluate the latest HA observation when a deadline becomes due."""
+
+    async def async_evaluate(self, state: RuntimeStateRecord) -> PresenceState | None:
+        """Return current presence, or None when current input is unusable."""
+        ...
+
+
+@final
+class PersistedTargetConfirmationEvaluator:
+    """Default evaluator for pure runtimes without a live HA boundary."""
+
+    async def async_evaluate(self, state: RuntimeStateRecord) -> PresenceState | None:
+        """Retain the most recent accepted pending target."""
+        return state.pending_transition
 
 
 @final
@@ -95,3 +116,6 @@ class RuntimeDependencies:
     source: LocationSource
     store_coordinates: bool = False
     observer: TransitionObserver = field(default_factory=NoopTransitionObserver)
+    confirmation_evaluator: ConfirmationEvaluator = field(
+        default_factory=PersistedTargetConfirmationEvaluator
+    )

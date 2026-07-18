@@ -16,6 +16,7 @@ from .entity_state import (
     UnloadedEntityState,
 )
 from .ha_clock import HomeAssistantClock, HomeAssistantScheduler, UUIDEventIdFactory
+from .ha_confirmation import HomeAssistantConfirmationEvaluator
 from .ha_observer import HomeAssistantTransitionObserver
 from .listener import GeofenceTrackerListener, RuleRuntime
 from .models import LocationSource
@@ -23,6 +24,7 @@ from .runtime.contracts import RuntimeDependencies
 from .runtime.engine import RuleTransitionEngine
 from .storage.async_adapter import AsyncSQLiteStore
 from .storage.errors import StorageError
+from .storage.events import latest_event_at
 from .storage.resources import list_active_resources
 
 if TYPE_CHECKING:
@@ -191,12 +193,15 @@ class GeofenceJournalManager:
                     source=LocationSource.GPS,
                     store_coordinates=self._settings.store_coordinates,
                     observer=self._transition_observer(configured),
+                    confirmation_evaluator=HomeAssistantConfirmationEvaluator(
+                        self._hass, configured
+                    ),
                 ),
             )
             await engine.async_recover()
             runtimes.append(RuleRuntime(configured, engine))
         self._runtimes = tuple(runtimes)
-        self._update_recovered_last_event()
+        await self._async_update_recovered_last_event()
         listener = GeofenceTrackerListener(
             self._hass, self._runtimes, self._async_record_database_error
         )
@@ -206,24 +211,17 @@ class GeofenceJournalManager:
     def _transition_observer(
         self, resources: ConfiguredResources
     ) -> TransitionObserver:
-        return HomeAssistantTransitionObserver(
-            self._hass, resources, self._async_record_transition
-        )
+        return HomeAssistantTransitionObserver(self._hass, resources, self.record_event)
 
-    def _async_record_transition(self, occurred_at: datetime) -> None:
+    def record_event(self, occurred_at: datetime) -> None:
+        """Publish the latest committed automatic or manual event instant."""
         self._replace_entity_state(HealthyEntityState(last_event_at=occurred_at))
 
     def _async_record_database_error(self) -> None:
         self._replace_entity_state(DatabaseErrorEntityState())
 
-    def _update_recovered_last_event(self) -> None:
-        latest: datetime | None = None
-        for runtime in self._runtimes:
-            state = runtime.engine.current_state
-            if state is None or state.last_event_at is None:
-                continue
-            if latest is None or state.last_event_at > latest:
-                latest = state.last_event_at
+    async def _async_update_recovered_last_event(self) -> None:
+        latest = await self._store.async_run_operation(latest_event_at)
         self._replace_entity_state(HealthyEntityState(last_event_at=latest))
 
     def _replace_entity_state(self, state: GeofenceJournalEntityState) -> None:

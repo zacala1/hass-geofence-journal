@@ -83,7 +83,6 @@ upsert_place:
           unit_of_measurement: m
           mode: box
     exit_margin_meters:
-      default: 50
       selector:
         number:
           min: 0
@@ -138,7 +137,6 @@ upsert_rule:
       selector:
         text: {}
     enter_confirmation_seconds:
-      default: 120
       selector:
         number:
           min: 0
@@ -146,7 +144,6 @@ upsert_rule:
           unit_of_measurement: s
           mode: box
     exit_confirmation_seconds:
-      default: 180
       selector:
         number:
           min: 0
@@ -154,7 +151,6 @@ upsert_rule:
           unit_of_measurement: s
           mode: box
     cooldown_seconds:
-      default: 300
       selector:
         number:
           min: 0

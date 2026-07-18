@@ -13,7 +13,6 @@ from custom_components.geofence_journal.const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
     DOMAIN,
     TITLE,
@@ -47,7 +46,6 @@ def _entry(path: Path) -> MockConfigEntry:
             CONF_EXIT_CONFIRMATION_SECONDS: 0,
             CONF_COOLDOWN_SECONDS: 0,
             CONF_EXIT_MARGIN_METERS: 50.0,
-            CONF_MAX_GPS_ACCURACY_METERS: 100.0,
             CONF_DATABASE_PATH: str(path),
         },
     )

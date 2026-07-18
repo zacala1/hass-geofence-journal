@@ -16,14 +16,12 @@ from .const import (
     CONF_ENTER_CONFIRMATION_SECONDS,
     CONF_EXIT_CONFIRMATION_SECONDS,
     CONF_EXIT_MARGIN_METERS,
-    CONF_MAX_GPS_ACCURACY_METERS,
     CONF_STORE_COORDINATES,
     DATABASE_FILENAME,
     DEFAULT_COOLDOWN_SECONDS,
     DEFAULT_ENTER_CONFIRMATION_SECONDS,
     DEFAULT_EXIT_CONFIRMATION_SECONDS,
     DEFAULT_EXIT_MARGIN_METERS,
-    DEFAULT_MAX_GPS_ACCURACY_METERS,
     DEFAULT_STORE_COORDINATES,
     DOMAIN,
     STORAGE_DIRECTORY,
@@ -94,10 +92,6 @@ def _settings_schema(database_path: str) -> vol.Schema:
                 CONF_EXIT_MARGIN_METERS,
                 default=DEFAULT_EXIT_MARGIN_METERS,
             ): vol.Coerce(float),
-            vol.Required(
-                CONF_MAX_GPS_ACCURACY_METERS,
-                default=DEFAULT_MAX_GPS_ACCURACY_METERS,
-            ): vol.Coerce(float),
             vol.Required(CONF_DATABASE_PATH, default=database_path): str,
         }
     )
@@ -111,6 +105,5 @@ def _entry_data(settings: Settings) -> dict[str, ConfigValue]:
         CONF_EXIT_CONFIRMATION_SECONDS: settings.exit_confirmation_seconds,
         CONF_COOLDOWN_SECONDS: settings.cooldown_seconds,
         CONF_EXIT_MARGIN_METERS: settings.exit_margin_meters,
-        CONF_MAX_GPS_ACCURACY_METERS: settings.max_gps_accuracy_meters,
         CONF_DATABASE_PATH: settings.database_path,
     }
