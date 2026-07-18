@@ -1,0 +1,1 @@
+"""Geofence Journal integration package."""

@@ -1,0 +1,27 @@
+{
+  "title": "Geofence Journal",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configure journal storage",
+        "description": "Choose privacy and geofence timing defaults. Coordinates are not stored unless enabled.",
+        "data": {
+          "store_coordinates": "Store coordinates",
+          "enter_confirmation_seconds": "Enter confirmation (seconds)",
+          "exit_confirmation_seconds": "Exit confirmation (seconds)",
+          "cooldown_seconds": "Duplicate-event cooldown (seconds)",
+          "exit_margin_meters": "Exit margin (meters)",
+          "max_gps_accuracy_meters": "Maximum GPS inaccuracy (meters)",
+          "database_path": "Database path"
+        }
+      }
+    },
+    "error": {
+      "invalid_value": "Enter a valid value. Timing and margin values cannot be negative, and GPS accuracy must be greater than zero."
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Geofence Journal configuration is supported."
+    }
+  }
+}
+

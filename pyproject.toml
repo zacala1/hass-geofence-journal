@@ -1,0 +1,62 @@
+[project]
+name = "hass-geofence-journal"
+version = "0.1.0"
+description = "Crash-safe geofence event journaling for Home Assistant"
+requires-python = ">=3.14.2,<3.15"
+dependencies = [
+    "homeassistant>=2026.7,<2026.8",
+    "voluptuous>=0.15.2",
+]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.31.0",
+    "pytest>=9.0.0,<10",
+    "pytest-homeassistant-custom-component>=0.13.300",
+    "ruff>=0.12.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+minversion = "8.4"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+filterwarnings = ["error"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["custom_components", "tests"]
+exclude = [".venv", ".venv-*", ".venv*"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "CPY001", "D203", "D213", "ISC001"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ARG", "D", "PLR2004", "S101", "SLF001"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+docstring-code-format = true
+indent-style = "space"
+quote-style = "double"
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.14"
+pythonPlatform = "All"
+include = ["custom_components/geofence_journal", "tests"]
+exclude = ["**/__pycache__", "**/.venv", "**/.venv-*", "**/.venv*"]
+reportMissingParameterType = "error"
+reportMissingTypeStubs = false # HA's external pytest plugin does not publish stubs.
+reportUnnecessaryTypeIgnoreComment = "error"
+reportTypedDictNotRequiredAccess = false # HA FlowResult keys depend on result type.
+reportUnknownMemberType = false # HA FlowManager exposes an untyped input mapping.
+reportUnusedVariable = "error"

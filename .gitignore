@@ -1,0 +1,14 @@
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.basedpyright/
+.omo/
+*.db
+*.db-shm
+*.db-wal
+custom_components/geofence_journal/exports/
