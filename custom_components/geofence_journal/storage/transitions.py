@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
 from typing import TYPE_CHECKING
-
-from custom_components.geofence_journal.models import PresenceState
 
 from .db_types import required_integer, required_text
 from .errors import InjectedStorageFaultError
 from .records import (
     ConfirmedTransition,
-    RuntimeStateRecord,
     TransitionResult,
     utc_text,
 )
+from .runtime_state import write_runtime_state_row
 
 if TYPE_CHECKING:
     from .db_types import SQLConnection
@@ -46,8 +43,9 @@ def confirm_transition(
         _ = connection.execute(
             """INSERT INTO location_events
             (id,journal_id,rule_id,tracker_id,place_id,event_type,occurred_at,
-             confirmed_at,source,status,transition_generation,confirmed_deadline,
-             created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+             confirmed_at,latitude,longitude,accuracy_m,source,status,
+             transition_generation,confirmed_deadline,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 transition.event_id,
                 transition.journal_id,
@@ -57,6 +55,17 @@ def confirm_transition(
                 transition.event_type.value,
                 occurred_at,
                 confirmed_at,
+                (
+                    None
+                    if transition.coordinates is None
+                    else transition.coordinates.latitude
+                ),
+                (
+                    None
+                    if transition.coordinates is None
+                    else transition.coordinates.longitude
+                ),
+                transition.accuracy_m,
                 transition.source.value,
                 "confirmed",
                 transition.generation,
@@ -67,24 +76,29 @@ def confirm_transition(
         )
         if fail_after_event_insert:
             _raise_injected_fault()
-        _ = connection.execute(
-            """INSERT INTO runtime_states
-            (rule_id,presence_state,last_event_id,last_event_type,last_event_at,
-             updated_at) VALUES (?,?,?,?,?,?)
-            ON CONFLICT(rule_id) DO UPDATE SET
-            presence_state=excluded.presence_state,
-            last_event_id=excluded.last_event_id,
-            last_event_type=excluded.last_event_type,
-            last_event_at=excluded.last_event_at,updated_at=excluded.updated_at""",
-            (
-                transition.rule_id,
-                transition.target_state.value,
-                transition.event_id,
-                transition.event_type.value,
-                confirmed_at,
-                confirmed_at,
-            ),
-        )
+        runtime = transition.runtime_state
+        if runtime is None:
+            _ = connection.execute(
+                """INSERT INTO runtime_states
+                (rule_id,presence_state,last_event_id,last_event_type,last_event_at,
+                 pending_generation,updated_at) VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(rule_id) DO UPDATE SET
+                presence_state=excluded.presence_state,
+                last_event_id=excluded.last_event_id,
+                last_event_type=excluded.last_event_type,
+                last_event_at=excluded.last_event_at,updated_at=excluded.updated_at""",
+                (
+                    transition.rule_id,
+                    transition.target_state.value,
+                    transition.event_id,
+                    transition.event_type.value,
+                    confirmed_at,
+                    transition.generation,
+                    confirmed_at,
+                ),
+            )
+        else:
+            write_runtime_state_row(connection, runtime)
     except InjectedStorageFaultError, sqlite3.Error:
         connection.rollback()
         raise
@@ -98,31 +112,6 @@ def event_count(connection: SQLConnection) -> int:
     if row is None:
         return 0
     return required_integer(row[0], field="event count")
-
-
-def runtime_state(connection: SQLConnection, rule_id: str) -> RuntimeStateRecord | None:
-    """Load the persisted runtime state for a rule."""
-    row = connection.execute(
-        """SELECT presence_state,last_event_id,updated_at
-        FROM runtime_states WHERE rule_id=?""",
-        (rule_id,),
-    ).fetchone()
-    if row is None:
-        return None
-    return RuntimeStateRecord(
-        rule_id=rule_id,
-        presence_state=PresenceState(
-            required_text(row[0], field="runtime_states.presence_state")
-        ),
-        last_event_id=(
-            None
-            if row[1] is None
-            else required_text(row[1], field="runtime_states.last_event_id")
-        ),
-        updated_at=datetime.fromisoformat(
-            required_text(row[2], field="runtime_states.updated_at")
-        ),
-    )
 
 
 def _raise_injected_fault() -> None:

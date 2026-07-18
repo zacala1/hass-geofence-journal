@@ -33,8 +33,9 @@ from .records import (
     TransitionResult,
 )
 from .resources import upsert_journal, upsert_place, upsert_rule, upsert_tracker
+from .runtime_state import delete_runtime_state, load_runtime_state, save_runtime_state
 from .schema import SCHEMA_VERSION, bootstrap_v1, read_schema_version
-from .transitions import confirm_transition, event_count, runtime_state
+from .transitions import confirm_transition, event_count
 
 DEFAULT_BUSY_TIMEOUT_MS: Final = 1_000
 MAX_BUSY_TIMEOUT_MS: Final = 10_000
@@ -208,7 +209,17 @@ class SQLiteStore:
     def runtime_state(self, rule_id: str) -> RuntimeStateRecord | None:
         """Load the persisted runtime state for a rule."""
         with self._lock:
-            return runtime_state(self._require_connection(), rule_id)
+            return load_runtime_state(self._require_connection(), rule_id)
+
+    def save_runtime_state(self, state: RuntimeStateRecord) -> None:
+        """Persist all fields required for deterministic recovery."""
+        with self._lock:
+            save_runtime_state(self._require_connection(), state)
+
+    def delete_runtime_state(self, rule_id: str) -> None:
+        """Delete a runtime row without synthesizing an event."""
+        with self._lock:
+            delete_runtime_state(self._require_connection(), rule_id)
 
     def _configure_connection(self, connection: SQLConnection) -> None:
         _ = connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")

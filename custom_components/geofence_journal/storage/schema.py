@@ -96,12 +96,27 @@ SCHEMA_STATEMENTS: Final[tuple[str, ...]] = (
             CHECK(last_event_type IS NULL
                 OR last_event_type IN ('enter','exit','manual')),
         last_event_at TEXT CHECK(last_event_at IS NULL OR substr(last_event_at,-1)='Z'),
-        enter_cooldown_until TEXT, exit_cooldown_until TEXT,
+        enter_cooldown_until TEXT CHECK(enter_cooldown_until IS NULL
+            OR substr(enter_cooldown_until,-1)='Z'),
+        exit_cooldown_until TEXT CHECK(exit_cooldown_until IS NULL
+            OR substr(exit_cooldown_until,-1)='Z'),
         pending_transition TEXT CHECK(pending_transition IS NULL
             OR pending_transition IN ('inside','outside')),
-        pending_started_at TEXT, pending_deadline TEXT, pending_generation INTEGER,
-        latest_observation_at TEXT, last_processed_at TEXT,
+        pending_started_at TEXT CHECK(pending_started_at IS NULL
+            OR substr(pending_started_at,-1)='Z'),
+        pending_deadline TEXT CHECK(pending_deadline IS NULL
+            OR substr(pending_deadline,-1)='Z'), pending_generation INTEGER,
+        latest_observation_at TEXT CHECK(latest_observation_at IS NULL
+            OR substr(latest_observation_at,-1)='Z'), latest_latitude REAL,
+        latest_longitude REAL, latest_accuracy_m REAL,
+        last_processed_at TEXT CHECK(last_processed_at IS NULL
+            OR substr(last_processed_at,-1)='Z'),
         updated_at TEXT NOT NULL CHECK(substr(updated_at,-1)='Z'),
+        CHECK((latest_latitude IS NULL AND latest_longitude IS NULL)
+           OR (latest_latitude BETWEEN -90 AND 90
+               AND latest_longitude BETWEEN -180 AND 180)),
+        CHECK(latest_accuracy_m IS NULL OR
+            (latest_accuracy_m >= 0 AND latest_accuracy_m < 1.0e308)),
         FOREIGN KEY(rule_id) REFERENCES recording_rules(id) ON DELETE RESTRICT,
         FOREIGN KEY(last_event_id) REFERENCES location_events(id)
             ON DELETE RESTRICT)""",

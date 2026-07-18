@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from custom_components.geofence_journal.models import (
+        Coordinates,
         LocationEventType,
         LocationSource,
+        Meters,
         PresenceState,
     )
 
@@ -40,6 +42,18 @@ class RuntimeStateRecord:
     rule_id: str
     presence_state: PresenceState
     last_event_id: str | None
+    last_event_type: LocationEventType | None
+    last_event_at: datetime | None
+    enter_cooldown_until: datetime | None
+    exit_cooldown_until: datetime | None
+    pending_transition: PresenceState | None
+    pending_started_at: datetime | None
+    pending_deadline: datetime | None
+    pending_generation: int
+    latest_observation_at: datetime | None
+    latest_coordinates: Coordinates | None
+    latest_accuracy_m: Meters | None
+    last_processed_at: datetime | None
     updated_at: datetime
 
 
@@ -67,3 +81,6 @@ class ConfirmedTransition:
     confirmed_at: datetime
     generation: int
     confirmed_deadline: datetime
+    coordinates: Coordinates | None = None
+    accuracy_m: Meters | None = None
+    runtime_state: RuntimeStateRecord | None = None

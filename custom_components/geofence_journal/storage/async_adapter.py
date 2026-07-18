@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-    from .records import ConfirmedTransition, TransitionResult
+    from .records import ConfirmedTransition, RuntimeStateRecord, TransitionResult
     from .resources import ConfiguredResources
 
 
@@ -55,6 +55,24 @@ class AsyncSQLiteStore:
         async with self._gate:
             self._ensure_accepting()
             return await run_sync(self._store.confirm_transition, transition)
+
+    async def async_runtime_state(self, rule_id: str) -> RuntimeStateRecord | None:
+        """Load one complete runtime row off-loop."""
+        async with self._gate:
+            self._ensure_accepting()
+            return await run_sync(self._store.runtime_state, rule_id)
+
+    async def async_save_runtime_state(self, state: RuntimeStateRecord) -> None:
+        """Persist one complete runtime row off-loop."""
+        async with self._gate:
+            self._ensure_accepting()
+            await run_sync(self._store.save_runtime_state, state)
+
+    async def async_delete_runtime_state(self, rule_id: str) -> None:
+        """Delete one runtime row off-loop without creating an event."""
+        async with self._gate:
+            self._ensure_accepting()
+            await run_sync(self._store.delete_runtime_state, rule_id)
 
     async def async_close(self) -> None:
         """Stop accepting work, drain the gate, and close off-loop."""
