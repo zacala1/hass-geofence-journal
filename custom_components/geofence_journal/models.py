@@ -30,7 +30,7 @@ class TrackerKind(StrEnum):
 class PlaceKind(StrEnum):
     """Supported place-definition sources."""
 
-    COORDINATE = "coordinate"
+    COORDINATE = "coordinates"
     HA_ZONE = "ha_zone"
 
 

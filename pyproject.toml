@@ -60,3 +60,4 @@ reportUnnecessaryTypeIgnoreComment = "error"
 reportTypedDictNotRequiredAccess = false # HA FlowResult keys depend on result type.
 reportUnknownMemberType = false # HA FlowManager exposes an untyped input mapping.
 reportUnusedVariable = "error"
+reportUnnecessaryComparison = false # Exhaustive match guards intentionally name Never.
