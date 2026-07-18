@@ -83,36 +83,32 @@ class Settings:
 
 
 def _read_bool(raw: Mapping[str, ConfigValue], field: str) -> bool:
-    match raw.get(field):
-        case bool() as value:
-            return value
-        case _:
-            raise SettingsFieldError(field=field)
+    value = raw.get(field)
+    if isinstance(value, bool):
+        return value
+    raise SettingsFieldError(field=field)
 
 
 def _read_int(raw: Mapping[str, ConfigValue], field: str) -> int:
-    match raw.get(field):
-        case bool():
-            raise SettingsFieldError(field=field)
-        case int() as value:
-            return value
-        case _:
-            raise SettingsFieldError(field=field)
+    value = raw.get(field)
+    if isinstance(value, bool):
+        raise SettingsFieldError(field=field)
+    if isinstance(value, int):
+        return value
+    raise SettingsFieldError(field=field)
 
 
 def _read_float(raw: Mapping[str, ConfigValue], field: str) -> float:
-    match raw.get(field):
-        case bool():
-            raise SettingsFieldError(field=field)
-        case int() | float() as value:
-            return float(value)
-        case _:
-            raise SettingsFieldError(field=field)
+    value = raw.get(field)
+    if isinstance(value, bool):
+        raise SettingsFieldError(field=field)
+    if isinstance(value, (int, float)):
+        return float(value)
+    raise SettingsFieldError(field=field)
 
 
 def _read_str(raw: Mapping[str, ConfigValue], field: str) -> str:
-    match raw.get(field):
-        case str() as value:
-            return value
-        case _:
-            raise SettingsFieldError(field=field)
+    value = raw.get(field)
+    if isinstance(value, str):
+        return value
+    raise SettingsFieldError(field=field)

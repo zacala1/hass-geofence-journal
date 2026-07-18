@@ -1,0 +1,305 @@
+upsert_tracker:
+  fields:
+    resource_id:
+      example: "00000000-0000-4000-8000-000000000001"
+      selector:
+        text: {}
+    entity_id:
+      required: true
+      example: person.alice
+      selector:
+        entity:
+          filter:
+            domain:
+              - person
+              - device_tracker
+    kind:
+      required: true
+      default: person
+      selector:
+        select:
+          options:
+            - person
+            - device_tracker
+          translation_key: tracker_kind
+    name:
+      required: true
+      example: Alice
+      selector:
+        text: {}
+    enabled:
+      default: true
+      selector:
+        boolean: {}
+
+upsert_place:
+  fields:
+    resource_id:
+      example: "00000000-0000-4000-8000-000000000002"
+      selector:
+        text: {}
+    name:
+      required: true
+      example: Home
+      selector:
+        text: {}
+    source_type:
+      required: true
+      default: coordinates
+      selector:
+        select:
+          options:
+            - coordinates
+            - ha_zone
+          translation_key: place_source
+    zone_entity_id:
+      example: zone.home
+      selector:
+        entity:
+          filter:
+            domain: zone
+    latitude:
+      example: 37.5665
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
+    longitude:
+      example: 126.978
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
+    radius_meters:
+      example: 200
+      selector:
+        number:
+          min: 0.001
+          step: any
+          unit_of_measurement: m
+          mode: box
+    exit_margin_meters:
+      default: 50
+      selector:
+        number:
+          min: 0
+          step: any
+          unit_of_measurement: m
+          mode: box
+    enabled:
+      default: true
+      selector:
+        boolean: {}
+
+upsert_journal:
+  fields:
+    resource_id:
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    name:
+      required: true
+      example: Family journal
+      selector:
+        text: {}
+    enabled:
+      default: true
+      selector:
+        boolean: {}
+
+upsert_rule:
+  fields:
+    resource_id:
+      example: "00000000-0000-4000-8000-000000000004"
+      selector:
+        text: {}
+    name:
+      required: true
+      example: Alice at home
+      selector:
+        text: {}
+    tracker_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000001"
+      selector:
+        text: {}
+    place_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000002"
+      selector:
+        text: {}
+    journal_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    enter_confirmation_seconds:
+      default: 120
+      selector:
+        number:
+          min: 0
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    exit_confirmation_seconds:
+      default: 180
+      selector:
+        number:
+          min: 0
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    cooldown_seconds:
+      default: 300
+      selector:
+        number:
+          min: 0
+          step: 1
+          unit_of_measurement: s
+          mode: box
+    max_gps_accuracy_meters:
+      default: 200
+      selector:
+        number:
+          min: 0.001
+          step: any
+          unit_of_measurement: m
+          mode: box
+    enabled:
+      default: true
+      selector:
+        boolean: {}
+
+add_event:
+  fields:
+    journal_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    tracker_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000001"
+      selector:
+        text: {}
+    place_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000002"
+      selector:
+        text: {}
+    occurred_at:
+      required: true
+      example: "2026-07-18 12:00:00+00:00"
+      selector:
+        datetime: {}
+    latitude:
+      example: 37.5665
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: any
+          mode: box
+    longitude:
+      example: 126.978
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: any
+          mode: box
+    accuracy_m:
+      example: 15
+      selector:
+        number:
+          min: 0
+          step: any
+          unit_of_measurement: m
+          mode: box
+    note:
+      example: Arrived by train
+      selector:
+        text:
+          multiline: true
+
+exclude_event:
+  fields:
+    event_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000005"
+      selector:
+        text: {}
+    reason:
+      example: GPS noise
+      selector:
+        text:
+          multiline: true
+
+restore_event:
+  fields:
+    event_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000005"
+      selector:
+        text: {}
+    reason:
+      example: Event verified
+      selector:
+        text:
+          multiline: true
+
+export_journal:
+  fields:
+    journal_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    start_at:
+      example: "2026-07-01 00:00:00+00:00"
+      selector:
+        datetime: {}
+    end_at:
+      example: "2026-07-31 23:59:59+00:00"
+      selector:
+        datetime: {}
+    include_coordinates:
+      default: false
+      selector:
+        boolean: {}
+
+purge_events:
+  fields:
+    before:
+      required: true
+      example: "2026-01-01 00:00:00+00:00"
+      selector:
+        datetime: {}
+    journal_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    dry_run:
+      default: true
+      selector:
+        boolean: {}
+    confirm:
+      default: false
+      selector:
+        boolean: {}
+
+compact_database:
+  fields: {}
+
+reset_database:
+  fields:
+    confirmation:
+      required: true
+      example: DELETE ALL GEOFENCE JOURNAL DATA
+      selector:
+        text: {}

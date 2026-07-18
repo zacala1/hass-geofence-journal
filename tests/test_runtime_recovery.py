@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -49,8 +50,11 @@ async def test_future_pending_reschedules_for_remaining_restart_delay(
     await reopened_store.async_close()
     with SQLiteStore(path) as final_store:
         assert final_store.event_count() == 1
-    print(  # noqa: T201 - required manual recovery evidence summary
-        "recovery: OUTSIDE -> pending INSIDE T0 -> close T+60 -> reopen T+90 -> advance T+120 -> one ENTER, stable INSIDE"  # noqa: E501
+    _ = sys.stdout.writelines(
+        (
+            "recovery: OUTSIDE -> pending INSIDE T0 -> close T+60 -> reopen T+90 ",
+            "-> advance T+120 -> one ENTER, stable INSIDE\n",
+        )
     )
 
 

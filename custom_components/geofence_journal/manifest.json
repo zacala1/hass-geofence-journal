@@ -1,11 +1,14 @@
 {
   "domain": "geofence_journal",
   "name": "Geofence Journal",
-  "version": "0.1.0",
+  "codeowners": ["@zacala1"],
   "config_flow": true,
-  "single_config_entry": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/zacala1/hass-geofence-journal",
   "integration_type": "service",
-  "iot_class": "local_push",
-  "requirements": []
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/zacala1/hass-geofence-journal/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
 }
-

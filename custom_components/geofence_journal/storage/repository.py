@@ -7,6 +7,7 @@ import threading
 from typing import TYPE_CHECKING, Final, Self, final
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
     from pathlib import Path
     from types import TracebackType
@@ -220,6 +221,11 @@ class SQLiteStore:
         """Delete a runtime row without synthesizing an event."""
         with self._lock:
             delete_runtime_state(self._require_connection(), rule_id)
+
+    def run_operation[T](self, operation: Callable[[SQLConnection], T]) -> T:
+        """Run one typed operation inside the serialized connection gate."""
+        with self._lock:
+            return operation(self._require_connection())
 
     def _configure_connection(self, connection: SQLConnection) -> None:
         _ = connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")

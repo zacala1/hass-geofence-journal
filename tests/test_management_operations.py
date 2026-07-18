@@ -1,0 +1,214 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Final, final
+from uuid import UUID
+
+import pytest
+from custom_components.geofence_journal import management_backend
+from custom_components.geofence_journal.export import (
+    ExportArtifact,
+    ExportRegistry,
+    ExportRequest,
+)
+from custom_components.geofence_journal.maintenance import (
+    AddEventRequest,
+    ExcludeEventRequest,
+    PurgeEventsRequest,
+    RestoreEventRequest,
+    UpsertJournalRequest,
+    UpsertPlaceRequest,
+    UpsertTrackerRequest,
+)
+from custom_components.geofence_journal.management_backend import (
+    ManagementBackendDependencies,
+    SQLiteManagementBackend,
+)
+from custom_components.geofence_journal.models import PlaceKind, TrackerKind
+from custom_components.geofence_journal.storage import AsyncSQLiteStore
+from custom_components.geofence_journal.storage.events import MissingEventReferenceError
+from pydantic_core import PydanticCustomError
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+    from pathlib import Path
+
+    from custom_components.geofence_journal.storage.db_types import SQLConnection
+
+NOW: Final = datetime(2026, 7, 18, 12, tzinfo=UTC)
+TRACKER_ID: Final = UUID("00000000-0000-4000-8000-000000000001")
+PLACE_ID: Final = UUID("00000000-0000-4000-8000-000000000002")
+JOURNAL_ID: Final = UUID("00000000-0000-4000-8000-000000000003")
+MISSING_ID: Final = UUID("00000000-0000-4000-8000-000000000099")
+
+
+@final
+class FixedClock:
+    def utc_now(self) -> datetime:
+        return NOW
+
+
+@final
+class PauseRecorder:
+    def __init__(self) -> None:
+        self.pauses = 0
+
+    @asynccontextmanager
+    async def pause_and_drain(self) -> AsyncGenerator[None]:
+        self.pauses += 1
+        yield
+
+
+async def _open_backend(
+    tmp_path: Path,
+) -> tuple[
+    SQLiteManagementBackend,
+    AsyncSQLiteStore,
+    ExportRegistry,
+    PauseRecorder,
+    list[ExportArtifact],
+    list[str],
+]:
+    store = AsyncSQLiteStore(tmp_path / "management.db")
+    await store.async_open()
+    exports = ExportRegistry(tmp_path / "exports", FixedClock())
+    coordinator = PauseRecorder()
+    scheduled: list[ExportArtifact] = []
+    refreshes: list[str] = []
+
+    async def refresh() -> None:
+        refreshes.append("refresh")
+
+    backend = SQLiteManagementBackend(
+        store,
+        ManagementBackendDependencies(
+            exports=exports,
+            coordinator=coordinator,
+            clock=FixedClock(),
+            store_coordinates=True,
+            refresh_resources=refresh,
+            schedule_export_cleanup=scheduled.append,
+        ),
+    )
+    return backend, store, exports, coordinator, scheduled, refreshes
+
+
+async def _seed(backend: SQLiteManagementBackend) -> None:
+    _ = await backend.async_upsert_tracker(
+        UpsertTrackerRequest(
+            resource_id=TRACKER_ID,
+            entity_id="person.coverage",
+            kind=TrackerKind.PERSON,
+            name="Coverage user",
+        )
+    )
+    _ = await backend.async_upsert_place(
+        UpsertPlaceRequest(
+            resource_id=PLACE_ID,
+            name="Coverage home",
+            source_type=PlaceKind.COORDINATE,
+            latitude=37.5,
+            longitude=127.0,
+            radius_meters=100,
+        )
+    )
+    _ = await backend.async_upsert_journal(
+        UpsertJournalRequest(resource_id=JOURNAL_ID, name="Coverage journal")
+    )
+
+
+async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) -> None:
+    backend, store, _, coordinator, scheduled, refreshes = await _open_backend(tmp_path)
+    await _seed(backend)
+    await backend.async_refresh_resources()
+
+    added = await backend.async_add_event(
+        AddEventRequest(
+            journal_id=JOURNAL_ID,
+            tracker_id=TRACKER_ID,
+            place_id=PLACE_ID,
+            occurred_at=NOW,
+            latitude=37.5,
+            longitude=127.0,
+            accuracy_m=5,
+            note="manual",
+        ),
+        "admin",
+    )
+    event_id = UUID(added.payload.event_id)
+    excluded = await backend.async_exclude_event(
+        ExcludeEventRequest(event_id=event_id, reason="noise"), "admin"
+    )
+    restored = await backend.async_restore_event(
+        RestoreEventRequest(event_id=event_id, reason="valid"), "admin"
+    )
+    exported = await backend.async_export_journal(
+        ExportRequest(journal_id=JOURNAL_ID, include_coordinates=True)
+    )
+    dry_run = await backend.async_purge_events(
+        PurgeEventsRequest(
+            before=NOW + timedelta(seconds=1),
+            journal_id=JOURNAL_ID,
+        )
+    )
+    compacted = await backend.async_compact_database()
+    coordinate_row = await store.async_run_operation(
+        lambda connection: connection.execute(
+            "SELECT latitude,longitude,accuracy_m FROM location_events"
+        ).fetchone()
+    )
+    await store.async_close()
+
+    assert added.changed
+    assert excluded.changed
+    assert restored.changed
+    assert excluded.payload.status == "excluded"
+    assert restored.payload.status == "confirmed"
+    assert coordinate_row == (37.5, 127.0, 5.0)
+    assert exported.count == 1
+    assert len(scheduled) == 1
+    assert dry_run.matched_events == 1
+    assert dry_run.dry_run
+    assert compacted.database_bytes_after > 0
+    assert coordinator.pauses == 1
+    assert refreshes == ["refresh"]
+
+
+async def test_invalid_invariants_missing_rows_and_failed_export_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend, store, exports, _, scheduled, _ = await _open_backend(tmp_path)
+    await _seed(backend)
+    invalid_coordinate = UpsertPlaceRequest.model_construct(
+        name="Invalid coordinate",
+        source_type=PlaceKind.COORDINATE,
+        latitude=None,
+        longitude=None,
+        radius_meters=None,
+    )
+    invalid_zone = UpsertPlaceRequest.model_construct(
+        name="Invalid zone",
+        source_type=PlaceKind.HA_ZONE,
+        zone_entity_id=None,
+    )
+    with pytest.raises(PydanticCustomError):
+        _ = await backend.async_upsert_place(invalid_coordinate)
+    with pytest.raises(PydanticCustomError):
+        _ = await backend.async_upsert_place(invalid_zone)
+    with pytest.raises(MissingEventReferenceError):
+        _ = await backend.async_export_journal(ExportRequest(journal_id=MISSING_ID))
+
+    def fail_export(
+        _connection: SQLConnection, _path: Path, _request: ExportRequest
+    ) -> int:
+        detail = "export failed"
+        raise OSError(detail)
+
+    monkeypatch.setattr(management_backend, "export_journal_csv", fail_export)
+    with pytest.raises(OSError, match="export failed"):
+        _ = await backend.async_export_journal(ExportRequest(journal_id=JOURNAL_ID))
+    await store.async_close()
+
+    assert scheduled == []
+    assert exports.cleanup_orphaned_files() == 0

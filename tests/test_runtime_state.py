@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from custom_components.geofence_journal.models import PresenceState
 from custom_components.geofence_journal.runtime.state import (
+    RuntimeInvariantError,
     active_deadline,
+    confirmation_seconds,
     confirmed_state,
+    direction_cooldown,
+    event_type_for,
 )
 from custom_components.geofence_journal.storage.records import RuntimeStateRecord
 from tests.test_runtime_fixtures import runtime_resources
@@ -62,3 +67,28 @@ def test_cooldown_expires_at_exact_utc_boundary() -> None:
 
     # Then
     assert recovered is None
+
+
+def test_unknown_direction_has_no_confirmation_or_cooldown() -> None:
+    state = pending_outside_with_enter_cooldown()
+
+    assert confirmation_seconds(runtime_resources().rule, PresenceState.UNKNOWN) == 0
+    assert direction_cooldown(state, PresenceState.UNKNOWN) is None
+
+
+def test_unknown_direction_cannot_create_a_confirmed_event() -> None:
+    state = pending_outside_with_enter_cooldown()
+
+    with pytest.raises(
+        RuntimeInvariantError, match="unknown cannot be confirmed"
+    ) as exc:
+        _ = event_type_for(PresenceState.UNKNOWN)
+    assert str(exc.value) == "unknown cannot be confirmed"
+    with pytest.raises(RuntimeInvariantError, match="unknown cannot be confirmed"):
+        _ = confirmed_state(
+            state,
+            PresenceState.UNKNOWN,
+            NOW,
+            "invalid-event",
+            runtime_resources().rule,
+        )

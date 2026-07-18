@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Final, assert_never
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -13,22 +12,18 @@ if TYPE_CHECKING:
 from custom_components.geofence_journal.models import (
     CoordinatePlace,
     JournalDefinition,
+    Meters,
     RuleDefinition,
     TrackerDefinition,
     ZonePlace,
 )
 
 from .records import utc_text
+from .resource_queries import ConfiguredResources, list_active_resources
 
+__all__ = ["ConfiguredResources", "list_active_resources"]
 
-@dataclass(frozen=True, slots=True)
-class ConfiguredResources:
-    """One complete runnable tracker/place/journal/rule linkage."""
-
-    tracker: TrackerDefinition
-    place: CoordinatePlace | ZonePlace
-    journal: JournalDefinition
-    rule: RuleDefinition
+DEFAULT_EXIT_MARGIN_METERS: Final = Meters(50)
 
 
 def upsert_tracker(
@@ -61,6 +56,9 @@ def upsert_place(
     connection: SQLConnection,
     place: CoordinatePlace | ZonePlace,
     timestamp: datetime,
+    *,
+    exit_margin_meters: Meters = DEFAULT_EXIT_MARGIN_METERS,
+    enabled: bool = True,
 ) -> None:
     """Create or replace either supported place definition."""
     stamp = utc_text(timestamp)
@@ -74,6 +72,8 @@ def upsert_place(
                 place.center.latitude,
                 place.center.longitude,
                 place.radius_m,
+                exit_margin_meters,
+                int(enabled),
                 stamp,
                 stamp,
             )
@@ -86,6 +86,8 @@ def upsert_place(
                 None,
                 None,
                 None,
+                exit_margin_meters,
+                int(enabled),
                 stamp,
                 stamp,
             )
@@ -93,12 +95,13 @@ def upsert_place(
             assert_never(unreachable)
     _ = connection.execute(
         """INSERT INTO places
-        (id,name,source_type,zone_entity_id,latitude,longitude,radius_m,
-         created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)
+        (id,name,source_type,zone_entity_id,latitude,longitude,radius_m,exit_margin_m,
+         enabled,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name,
         source_type=excluded.source_type,zone_entity_id=excluded.zone_entity_id,
         latitude=excluded.latitude,longitude=excluded.longitude,
-        radius_m=excluded.radius_m,updated_at=excluded.updated_at""",
+        radius_m=excluded.radius_m,exit_margin_m=excluded.exit_margin_m,
+        enabled=excluded.enabled,updated_at=excluded.updated_at""",
         parameters,
     )
 
@@ -122,6 +125,8 @@ def upsert_rule(
     connection: SQLConnection,
     rule: RuleDefinition,
     timestamp: datetime,
+    *,
+    name: str | None = None,
 ) -> None:
     """Create or replace a linked recording rule."""
     stamp = utc_text(timestamp)
@@ -131,7 +136,7 @@ def upsert_rule(
          exit_confirmation_seconds,cooldown_seconds,max_accuracy_m,enabled,
          created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET tracker_id=excluded.tracker_id,
-        place_id=excluded.place_id,journal_id=excluded.journal_id,
+        name=excluded.name,place_id=excluded.place_id,journal_id=excluded.journal_id,
         enter_confirmation_seconds=excluded.enter_confirmation_seconds,
         exit_confirmation_seconds=excluded.exit_confirmation_seconds,
         cooldown_seconds=excluded.cooldown_seconds,
@@ -139,7 +144,7 @@ def upsert_rule(
         updated_at=excluded.updated_at""",
         (
             rule.rule_id,
-            str(rule.rule_id),
+            name or str(rule.rule_id),
             rule.tracker_id,
             rule.place_id,
             rule.journal_id,

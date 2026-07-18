@@ -46,17 +46,13 @@ class SQLConnection(Protocol):
 
 def required_text(value: SQLiteValue, *, field: str) -> str:
     """Parse a required SQLite TEXT result."""
-    match value:
-        case str() as text:
-            return text
-        case int() | float() | bytes() | None:
-            raise DatabaseSchemaError(detail=f"{field} must be TEXT")
+    if isinstance(value, str):
+        return value
+    raise DatabaseSchemaError(detail=f"{field} must be TEXT")
 
 
 def required_integer(value: SQLiteValue, *, field: str) -> int:
     """Parse a required SQLite INTEGER result."""
-    match value:
-        case int() as integer:
-            return integer
-        case str() | float() | bytes() | None:
-            raise DatabaseSchemaError(detail=f"{field} must be INTEGER")
+    if isinstance(value, int):
+        return value
+    raise DatabaseSchemaError(detail=f"{field} must be INTEGER")

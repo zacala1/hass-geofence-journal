@@ -956,6 +956,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "homeassistant" },
+    { name = "pydantic" },
     { name = "voluptuous" },
 ]
 
@@ -963,6 +964,7 @@ dependencies = [
 dev = [
     { name = "basedpyright" },
     { name = "pytest" },
+    { name = "pytest-cov" },
     { name = "pytest-homeassistant-custom-component" },
     { name = "ruff" },
 ]
@@ -970,6 +972,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "homeassistant", specifier = ">=2026.7,<2026.8" },
+    { name = "pydantic", specifier = ">=2.12.5,<3" },
     { name = "voluptuous", specifier = ">=0.15.2" },
 ]
 
@@ -977,6 +980,7 @@ requires-dist = [
 dev = [
     { name = "basedpyright", specifier = ">=1.31.0" },
     { name = "pytest", specifier = ">=9.0.0,<10" },
+    { name = "pytest-cov", specifier = ">=7.0.0,<8" },
     { name = "pytest-homeassistant-custom-component", specifier = ">=0.13.300" },
     { name = "ruff", specifier = ">=0.12.0" },
 ]

@@ -22,6 +22,290 @@
     "abort": {
       "single_instance_allowed": "Geofence Journal 설정은 하나만 만들 수 있습니다."
     }
+  },
+  "selector": {
+    "tracker_kind": {
+      "options": {
+        "person": "사용자",
+        "device_tracker": "기기 추적기"
+      }
+    },
+    "place_source": {
+      "options": {
+        "coordinates": "고정 좌표",
+        "ha_zone": "Home Assistant 구역"
+      }
+    }
+  },
+  "services": {
+    "upsert_tracker": {
+      "name": "추적기 만들기 또는 업데이트",
+      "description": "지원되는 Home Assistant 추적기를 만들거나 업데이트하고 고정 리소스 ID를 반환합니다.",
+      "fields": {
+        "resource_id": {
+          "name": "리소스 ID",
+          "description": "업데이트할 기존 추적기 UUID입니다. 비워 두면 생성된 UUID로 새 추적기를 만듭니다."
+        },
+        "entity_id": {
+          "name": "추적기 엔터티",
+          "description": "위치 관측값을 제공하는 사용자 또는 기기 추적기 엔터티입니다."
+        },
+        "kind": {
+          "name": "추적기 종류",
+          "description": "선택한 엔터티 도메인과 일치해야 하는 추적기 종류입니다."
+        },
+        "name": {
+          "name": "이름",
+          "description": "저널 이벤트에 사용하는 읽기 쉬운 추적기 이름입니다."
+        },
+        "enabled": {
+          "name": "활성화",
+          "description": "이 추적기를 활성 기록 규칙에서 사용할지 여부입니다."
+        }
+      }
+    },
+    "upsert_place": {
+      "name": "장소 만들기 또는 업데이트",
+      "description": "고정 좌표 또는 Home Assistant 구역 장소를 만들거나 업데이트하고 고정 리소스 ID를 반환합니다.",
+      "fields": {
+        "resource_id": {
+          "name": "리소스 ID",
+          "description": "업데이트할 기존 장소 UUID입니다. 비워 두면 생성된 UUID로 새 장소를 만듭니다."
+        },
+        "name": {
+          "name": "이름",
+          "description": "저널 이벤트에 사용하는 읽기 쉬운 장소 이름입니다."
+        },
+        "source_type": {
+          "name": "장소 원본",
+          "description": "지오메트리를 고정 좌표에서 가져올지 실시간 Home Assistant 구역에서 가져올지 선택합니다."
+        },
+        "zone_entity_id": {
+          "name": "구역 엔터티",
+          "description": "Home Assistant 구역 장소에 필요합니다. 고정 좌표를 사용할 때는 비워 두세요."
+        },
+        "latitude": {
+          "name": "위도",
+          "description": "고정 좌표 장소에 필요한 -90도에서 90도 사이의 위도입니다."
+        },
+        "longitude": {
+          "name": "경도",
+          "description": "고정 좌표 장소에 필요한 -180도에서 180도 사이의 경도입니다."
+        },
+        "radius_meters": {
+          "name": "반경",
+          "description": "고정 좌표 장소에 필요한 0보다 큰 반경(미터)입니다."
+        },
+        "exit_margin_meters": {
+          "name": "이탈 여유 거리",
+          "description": "장소 반경 바깥에 적용할 0 이상의 히스테리시스 여유 거리(미터)입니다."
+        },
+        "enabled": {
+          "name": "활성화",
+          "description": "이 장소를 활성 기록 규칙에서 사용할지 여부입니다."
+        }
+      }
+    },
+    "upsert_journal": {
+      "name": "저널 만들기 또는 업데이트",
+      "description": "이름이 있는 이벤트 저널을 만들거나 업데이트하고 고정 리소스 ID를 반환합니다.",
+      "fields": {
+        "resource_id": {
+          "name": "리소스 ID",
+          "description": "업데이트할 기존 저널 UUID입니다. 비워 두면 생성된 UUID로 새 저널을 만듭니다."
+        },
+        "name": {
+          "name": "이름",
+          "description": "읽기 쉬운 저널 이름입니다."
+        },
+        "enabled": {
+          "name": "활성화",
+          "description": "이 저널이 활성 기록 규칙의 이벤트를 받을지 여부입니다."
+        }
+      }
+    },
+    "upsert_rule": {
+      "name": "기록 규칙 만들기 또는 업데이트",
+      "description": "추적기, 장소, 저널을 확정 시간, 차단 시간, 정확도 임계값과 함께 연결합니다.",
+      "fields": {
+        "resource_id": {
+          "name": "리소스 ID",
+          "description": "업데이트할 기존 규칙 UUID입니다. 비워 두면 생성된 UUID로 새 규칙을 만듭니다."
+        },
+        "name": {
+          "name": "이름",
+          "description": "읽기 쉬운 기록 규칙 이름입니다."
+        },
+        "tracker_id": {
+          "name": "추적기 ID",
+          "description": "추적기 작업에서 반환된 고정 UUID입니다."
+        },
+        "place_id": {
+          "name": "장소 ID",
+          "description": "장소 작업에서 반환된 고정 UUID입니다."
+        },
+        "journal_id": {
+          "name": "저널 ID",
+          "description": "저널 작업에서 반환된 고정 UUID입니다."
+        },
+        "enter_confirmation_seconds": {
+          "name": "진입 확정 시간",
+          "description": "진입 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다."
+        },
+        "exit_confirmation_seconds": {
+          "name": "이탈 확정 시간",
+          "description": "이탈 후보가 유효하게 유지되어야 하는 0 이상의 시간(초)입니다."
+        },
+        "cooldown_seconds": {
+          "name": "차단 시간",
+          "description": "같은 방향의 반복 이벤트를 억제하는 0 이상의 시간(초)입니다."
+        },
+        "max_gps_accuracy_meters": {
+          "name": "최대 GPS 오차",
+          "description": "허용할 0보다 큰 최대 GPS 오차(미터)입니다."
+        },
+        "enabled": {
+          "name": "활성화",
+          "description": "이 규칙이 추적기 관측값을 평가할지 여부입니다."
+        }
+      }
+    },
+    "add_event": {
+      "name": "수동 이벤트 추가",
+      "description": "수동 이벤트를 만듭니다. 이벤트 ID와 확정 시간은 Geofence Journal에서 생성합니다.",
+      "fields": {
+        "journal_id": {
+          "name": "저널 ID",
+          "description": "이벤트를 받을 저널의 고정 UUID입니다."
+        },
+        "tracker_id": {
+          "name": "추적기 ID",
+          "description": "이벤트와 연결할 추적기의 고정 UUID입니다."
+        },
+        "place_id": {
+          "name": "장소 ID",
+          "description": "이벤트와 연결할 장소의 고정 UUID입니다."
+        },
+        "occurred_at": {
+          "name": "발생 시간",
+          "description": "수동 이벤트가 발생한 시간대 정보가 포함된 날짜와 시간입니다."
+        },
+        "latitude": {
+          "name": "위도",
+          "description": "선택 사항인 -90도에서 90도 사이의 위도입니다. 경도와 함께 입력하세요."
+        },
+        "longitude": {
+          "name": "경도",
+          "description": "선택 사항인 -180도에서 180도 사이의 경도입니다. 위도와 함께 입력하세요."
+        },
+        "accuracy_m": {
+          "name": "GPS 정확도",
+          "description": "입력한 좌표의 선택 사항인 0 이상의 GPS 오차(미터)입니다."
+        },
+        "note": {
+          "name": "메모",
+          "description": "수동 이벤트와 함께 보관할 선택 사항인 메모입니다."
+        }
+      }
+    },
+    "exclude_event": {
+      "name": "이벤트 제외",
+      "description": "이벤트와 감사 수정 기록을 유지하면서 이벤트를 제외 상태로 표시합니다.",
+      "fields": {
+        "event_id": {
+          "name": "이벤트 ID",
+          "description": "제외할 이벤트의 고정 UUID입니다."
+        },
+        "reason": {
+          "name": "사유",
+          "description": "감사 수정 기록에 남길 선택 사항인 사유입니다."
+        }
+      }
+    },
+    "restore_event": {
+      "name": "이벤트 복원",
+      "description": "감사 수정 기록을 유지하면서 제외된 이벤트를 확정 상태로 복원합니다.",
+      "fields": {
+        "event_id": {
+          "name": "이벤트 ID",
+          "description": "복원할 이벤트의 고정 UUID입니다."
+        },
+        "reason": {
+          "name": "사유",
+          "description": "감사 수정 기록에 남길 선택 사항인 사유입니다."
+        }
+      }
+    },
+    "export_journal": {
+      "name": "저널 내보내기",
+      "description": "24시간 후 만료되는 인증된 다운로드 URL에 UTF-8 BOM CSV를 만듭니다.",
+      "fields": {
+        "journal_id": {
+          "name": "저널 ID",
+          "description": "내보낼 저널의 고정 UUID입니다."
+        },
+        "start_at": {
+          "name": "시작 시간",
+          "description": "내보내기 범위에 포함할 선택 사항인 시작 시간입니다. 시간대 정보가 필요합니다."
+        },
+        "end_at": {
+          "name": "종료 시간",
+          "description": "내보내기 범위에 포함할 선택 사항인 종료 시간입니다. 시간대 정보가 필요합니다."
+        },
+        "include_coordinates": {
+          "name": "좌표 포함",
+          "description": "저장된 좌표가 있을 때 좌표 열을 포함합니다. 기본값은 비활성화입니다."
+        }
+      }
+    },
+    "purge_events": {
+      "name": "이벤트 영구 삭제",
+      "description": "지정한 날짜와 시간보다 엄격히 이전인 이벤트를 계산하거나 영구 삭제합니다.",
+      "fields": {
+        "before": {
+          "name": "기준 시간 이전",
+          "description": "시간대 정보가 포함된 기준 시간입니다. 이 값보다 엄격히 이전인 이벤트만 선택합니다."
+        },
+        "journal_id": {
+          "name": "저널 ID",
+          "description": "일치하는 이벤트를 선택할 저널의 고정 UUID입니다."
+        },
+        "dry_run": {
+          "name": "시험 실행",
+          "description": "데이터를 삭제하지 않고 일치하는 이벤트와 수정 기록 수를 보고합니다."
+        },
+        "confirm": {
+          "name": "영구 삭제 확인",
+          "description": "시험 실행이 아닌 영구 삭제에서 일치하는 데이터를 삭제하려면 활성화해야 합니다."
+        }
+      }
+    },
+    "compact_database": {
+      "name": "데이터베이스 압축",
+      "description": "SQLite WAL을 체크포인트한 다음 VACUUM을 실행하여 데이터베이스를 압축합니다.",
+      "fields": {}
+    },
+    "reset_database": {
+      "name": "데이터베이스 초기화",
+      "description": "Geofence Journal의 모든 도메인 및 런타임 데이터를 영구 삭제하고 스키마 버전 1을 복원합니다.",
+      "fields": {
+        "confirmation": {
+          "name": "확인 문구",
+          "description": "초기화를 승인하려면 DELETE ALL GEOFENCE JOURNAL DATA를 정확히 입력하세요."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_event": {
+        "name": "마지막 이벤트"
+      }
+    },
+    "binary_sensor": {
+      "healthy": {
+        "name": "정상 상태"
+      }
+    }
   }
 }
-

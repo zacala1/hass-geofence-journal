@@ -22,6 +22,290 @@
     "abort": {
       "single_instance_allowed": "Only one Geofence Journal configuration is supported."
     }
+  },
+  "selector": {
+    "tracker_kind": {
+      "options": {
+        "person": "Person",
+        "device_tracker": "Device tracker"
+      }
+    },
+    "place_source": {
+      "options": {
+        "coordinates": "Fixed coordinates",
+        "ha_zone": "Home Assistant zone"
+      }
+    }
+  },
+  "services": {
+    "upsert_tracker": {
+      "name": "Create or update tracker",
+      "description": "Creates or updates a supported Home Assistant tracker and returns its stable resource ID.",
+      "fields": {
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Existing tracker UUID to update. Leave empty to create a tracker with a generated UUID."
+        },
+        "entity_id": {
+          "name": "Tracker entity",
+          "description": "Person or device tracker entity that supplies location observations."
+        },
+        "kind": {
+          "name": "Tracker kind",
+          "description": "Tracker kind, which must match the selected entity domain."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Human-readable tracker name used in journal events."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether this tracker can participate in active recording rules."
+        }
+      }
+    },
+    "upsert_place": {
+      "name": "Create or update place",
+      "description": "Creates or updates a fixed-coordinate or Home Assistant zone place and returns its stable resource ID.",
+      "fields": {
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Existing place UUID to update. Leave empty to create a place with a generated UUID."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Human-readable place name used in journal events."
+        },
+        "source_type": {
+          "name": "Place source",
+          "description": "Whether geometry comes from fixed coordinates or a live Home Assistant zone."
+        },
+        "zone_entity_id": {
+          "name": "Zone entity",
+          "description": "Required for a Home Assistant zone place; leave empty for fixed coordinates."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Required latitude from -90 to 90 degrees for a fixed-coordinate place."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Required longitude from -180 to 180 degrees for a fixed-coordinate place."
+        },
+        "radius_meters": {
+          "name": "Radius",
+          "description": "Required positive radius in meters for a fixed-coordinate place."
+        },
+        "exit_margin_meters": {
+          "name": "Exit margin",
+          "description": "Non-negative hysteresis margin outside the place radius, in meters."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether this place can participate in active recording rules."
+        }
+      }
+    },
+    "upsert_journal": {
+      "name": "Create or update journal",
+      "description": "Creates or updates a named event journal and returns its stable resource ID.",
+      "fields": {
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Existing journal UUID to update. Leave empty to create a journal with a generated UUID."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Human-readable journal name."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether this journal accepts events from active recording rules."
+        }
+      }
+    },
+    "upsert_rule": {
+      "name": "Create or update recording rule",
+      "description": "Links a tracker, place, and journal with confirmation, cooldown, and accuracy thresholds.",
+      "fields": {
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Existing rule UUID to update. Leave empty to create a rule with a generated UUID."
+        },
+        "name": {
+          "name": "Name",
+          "description": "Human-readable recording rule name."
+        },
+        "tracker_id": {
+          "name": "Tracker ID",
+          "description": "Stable UUID returned by the tracker action."
+        },
+        "place_id": {
+          "name": "Place ID",
+          "description": "Stable UUID returned by the place action."
+        },
+        "journal_id": {
+          "name": "Journal ID",
+          "description": "Stable UUID returned by the journal action."
+        },
+        "enter_confirmation_seconds": {
+          "name": "Enter confirmation",
+          "description": "Non-negative seconds an enter candidate must remain valid."
+        },
+        "exit_confirmation_seconds": {
+          "name": "Exit confirmation",
+          "description": "Non-negative seconds an exit candidate must remain valid."
+        },
+        "cooldown_seconds": {
+          "name": "Cooldown",
+          "description": "Non-negative seconds that suppress repeated same-direction events."
+        },
+        "max_gps_accuracy_meters": {
+          "name": "Maximum GPS inaccuracy",
+          "description": "Positive maximum accepted GPS inaccuracy in meters."
+        },
+        "enabled": {
+          "name": "Enabled",
+          "description": "Whether the rule actively evaluates tracker observations."
+        }
+      }
+    },
+    "add_event": {
+      "name": "Add manual event",
+      "description": "Creates a manual event. The event ID and confirmation time are generated by Geofence Journal.",
+      "fields": {
+        "journal_id": {
+          "name": "Journal ID",
+          "description": "Stable UUID of the journal that receives the event."
+        },
+        "tracker_id": {
+          "name": "Tracker ID",
+          "description": "Stable UUID of the tracker associated with the event."
+        },
+        "place_id": {
+          "name": "Place ID",
+          "description": "Stable UUID of the place associated with the event."
+        },
+        "occurred_at": {
+          "name": "Occurred at",
+          "description": "Timezone-aware date and time when the manual event occurred."
+        },
+        "latitude": {
+          "name": "Latitude",
+          "description": "Optional latitude from -90 to 90 degrees; provide it together with longitude."
+        },
+        "longitude": {
+          "name": "Longitude",
+          "description": "Optional longitude from -180 to 180 degrees; provide it together with latitude."
+        },
+        "accuracy_m": {
+          "name": "GPS accuracy",
+          "description": "Optional non-negative GPS inaccuracy in meters for supplied coordinates."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note retained with the manual event."
+        }
+      }
+    },
+    "exclude_event": {
+      "name": "Exclude event",
+      "description": "Marks an event excluded while retaining the event and an audit revision.",
+      "fields": {
+        "event_id": {
+          "name": "Event ID",
+          "description": "Stable UUID of the event to exclude."
+        },
+        "reason": {
+          "name": "Reason",
+          "description": "Optional reason recorded in the audit revision."
+        }
+      }
+    },
+    "restore_event": {
+      "name": "Restore event",
+      "description": "Restores an excluded event to confirmed status while retaining an audit revision.",
+      "fields": {
+        "event_id": {
+          "name": "Event ID",
+          "description": "Stable UUID of the event to restore."
+        },
+        "reason": {
+          "name": "Reason",
+          "description": "Optional reason recorded in the audit revision."
+        }
+      }
+    },
+    "export_journal": {
+      "name": "Export journal",
+      "description": "Creates a UTF-8 BOM CSV behind an authenticated download URL that expires after 24 hours.",
+      "fields": {
+        "journal_id": {
+          "name": "Journal ID",
+          "description": "Stable UUID of the journal to export."
+        },
+        "start_at": {
+          "name": "Start time",
+          "description": "Optional inclusive timezone-aware start of the export interval."
+        },
+        "end_at": {
+          "name": "End time",
+          "description": "Optional inclusive timezone-aware end of the export interval."
+        },
+        "include_coordinates": {
+          "name": "Include coordinates",
+          "description": "Include coordinate columns when coordinates were stored; disabled by default."
+        }
+      }
+    },
+    "purge_events": {
+      "name": "Purge events",
+      "description": "Counts or permanently removes events strictly before a date and time.",
+      "fields": {
+        "before": {
+          "name": "Before",
+          "description": "Timezone-aware cutoff; only events strictly earlier than this value are selected."
+        },
+        "journal_id": {
+          "name": "Journal ID",
+          "description": "Stable UUID of the journal whose matching events are selected."
+        },
+        "dry_run": {
+          "name": "Dry run",
+          "description": "Report matching event and revision counts without deleting data."
+        },
+        "confirm": {
+          "name": "Confirm permanent deletion",
+          "description": "Must be enabled for a non-dry-run purge to delete matching data."
+        }
+      }
+    },
+    "compact_database": {
+      "name": "Compact database",
+      "description": "Checkpoints the SQLite WAL and runs VACUUM to compact the database.",
+      "fields": {}
+    },
+    "reset_database": {
+      "name": "Reset database",
+      "description": "Permanently clears all Geofence Journal domain and runtime data and restores schema version 1.",
+      "fields": {
+        "confirmation": {
+          "name": "Confirmation phrase",
+          "description": "Enter exactly DELETE ALL GEOFENCE JOURNAL DATA to authorize the reset."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "last_event": {
+        "name": "Last event"
+      }
+    },
+    "binary_sensor": {
+      "healthy": {
+        "name": "Healthy"
+      }
+    }
   }
 }
-

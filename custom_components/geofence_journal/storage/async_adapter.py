@@ -11,9 +11,11 @@ from .errors import StorageClosedError
 from .repository import DEFAULT_BUSY_TIMEOUT_MS, SQLiteStore
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from datetime import datetime
     from pathlib import Path
 
+    from .db_types import SQLConnection
     from .records import ConfirmedTransition, RuntimeStateRecord, TransitionResult
     from .resources import ConfiguredResources
 
@@ -73,6 +75,14 @@ class AsyncSQLiteStore:
         async with self._gate:
             self._ensure_accepting()
             await run_sync(self._store.delete_runtime_state, rule_id)
+
+    async def async_run_operation[T](
+        self, operation: Callable[[SQLConnection], T]
+    ) -> T:
+        """Run one typed operation off-loop under the lifecycle gate."""
+        async with self._gate:
+            self._ensure_accepting()
+            return await run_sync(lambda: self._store.run_operation(operation))
 
     async def async_close(self) -> None:
         """Stop accepting work, drain the gate, and close off-loop."""
