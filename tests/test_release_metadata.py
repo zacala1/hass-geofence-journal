@@ -157,6 +157,8 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
         "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+        "ghcr.io/hacs/action@sha256:3b5eaf821de267ede11dfdd3a792679dfdc72f52bdaf395422b39f0cfad27120",
+        "ghcr.io/home-assistant/hassfest@sha256:5fc3c5d7df109d248a61acfb0a675b38b1e4dc3a202feb260a8e33696f9803e3",
     }
     required_commands = {
         'uv run python -m scripts.release check "${GITHUB_REF_NAME}"',
@@ -183,19 +185,17 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     )
 
 
-def test_validation_workflow_uses_official_hacs_and_hassfest_actions() -> None:
+def test_validation_workflow_pins_official_validator_containers() -> None:
     # Given: the repository validation workflow.
     workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text("utf-8")
 
     # When: the external validators are inspected.
-    expected_actions = {
-        "hacs/action@d556e736723344f83838d08488c983a15381059a",
-        "home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c",
+    expected_images = {
+        "ghcr.io/hacs/action@sha256:3b5eaf821de267ede11dfdd3a792679dfdc72f52bdaf395422b39f0cfad27120",
+        "ghcr.io/home-assistant/hassfest@sha256:5fc3c5d7df109d248a61acfb0a675b38b1e4dc3a202feb260a8e33696f9803e3",
     }
 
-    # Then: both official custom-integration validators are scheduled.
-    assert expected_actions <= {
-        action for action in expected_actions if action in workflow
-    }
-    assert 'category: "integration"' in workflow
+    # Then: both official validator images are immutable and scheduled.
+    assert expected_images <= {image for image in expected_images if image in workflow}
+    assert "INPUT_CATEGORY: integration" in workflow
     assert "schedule:" in workflow

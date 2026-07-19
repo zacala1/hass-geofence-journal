@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final
 
 import pytest
 from custom_components.geofence_journal.const import (
@@ -130,17 +130,14 @@ async def test_admin_actions_build_and_update_one_runnable_rule(
             },
         )
         with SQLiteStore(database_path) as defaults_store:
-            stored_defaults = cast(
-                "tuple[int, int, int, float] | None",
-                defaults_store.run_operation(
-                    lambda connection: connection.execute(
-                        """SELECT r.enter_confirmation_seconds,
-                        r.exit_confirmation_seconds,r.cooldown_seconds,
-                        p.exit_margin_m FROM recording_rules r
-                        JOIN places p ON p.id=r.place_id WHERE r.id=?""",
-                        (str(rule_id),),
-                    ).fetchone()
-                ),
+            stored_defaults = defaults_store.run_operation(
+                lambda connection: connection.execute(
+                    """SELECT r.enter_confirmation_seconds,
+                    r.exit_confirmation_seconds,r.cooldown_seconds,
+                    p.exit_margin_m FROM recording_rules r
+                    JOIN places p ON p.id=r.place_id WHERE r.id=?""",
+                    (str(rule_id),),
+                ).fetchone()
             )
         assert stored_defaults == (17, 23, 29, 37.0)
         updated_id = await _upsert(

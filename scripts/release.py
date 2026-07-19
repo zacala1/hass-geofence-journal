@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.14.2,<3.15"
-# dependencies = []
+# dependencies = ["pydantic>=2.12.5,<3"]
 # ///
 # ─── How to run ───
 # uv run python -m scripts.release check [vX.Y.Z]
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from scripts.release_archive import build_release
 from scripts.release_contract import ReleaseContract, check_release
@@ -27,11 +27,23 @@ __all__ = (
     "check_release",
     "run_cli",
 )
+USAGE: Final = "usage: release.py check [vX.Y.Z] | build [output-directory]\n"
 
 
 def run_cli(arguments: Sequence[str], root: Path) -> int:
     """Run the release tool against an explicit repository root."""
+    try:
+        return _dispatch_cli(arguments, root)
+    except ReleaseCheckError as error:
+        _ = sys.stderr.write(f"release-check failed: {error}\n")
+        return 1
+
+
+def _dispatch_cli(arguments: Sequence[str], root: Path) -> int:
     match tuple(arguments):
+        case ("--help",) | ("-h",):
+            _ = sys.stdout.write(USAGE)
+            return 0
         case ("check",):
             _write_ready(check_release(root))
             return 0
@@ -49,19 +61,13 @@ def run_cli(arguments: Sequence[str], root: Path) -> int:
             _write_artifact(build_release(root, destination))
             return 0
         case _:
-            _ = sys.stderr.write(
-                "usage: release.py check [vX.Y.Z] | build [output-directory]\n"
-            )
+            _ = sys.stderr.write(USAGE)
             return 2
 
 
 def main() -> int:
     """Run the release tool from the current repository root."""
-    try:
-        return run_cli(sys.argv[1:], Path.cwd())
-    except ReleaseCheckError as error:
-        _ = sys.stderr.write(f"release-check failed: {error}\n")
-        return 1
+    return run_cli(sys.argv[1:], Path.cwd())
 
 
 def _write_ready(contract: ReleaseContract) -> None:

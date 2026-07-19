@@ -9,7 +9,11 @@ from scripts.release_contract import (
     PROJECT_NAME,
     check_release,
 )
-from scripts.release_errors import ReleaseCheckError
+from scripts.release_errors import (
+    ReleaseArtifactError,
+    ReleaseCheckError,
+    ReleaseOutputDirectoryError,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -36,22 +40,30 @@ def build_release(root: Path, output_directory: Path) -> Path:
     """Create one deterministic manual-install ZIP from validated sources."""
     contract = check_release(root)
     destination = output_directory.resolve()
-    destination.mkdir(parents=True, exist_ok=True)
-    archive_path = destination / f"{PROJECT_NAME}-v{contract.version}.zip"
     integration = contract.root / "custom_components" / contract.domain
+    if destination == integration or integration in destination.parents:
+        raise ReleaseOutputDirectoryError(destination, integration)
+    try:
+        destination.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise ReleaseArtifactError(destination) from error
+    archive_path = destination / f"{PROJECT_NAME}-v{contract.version}.zip"
     sources = _archive_sources(integration)
-    with ZipFile(archive_path, "w") as archive:
-        for source in sources:
-            relative = source.relative_to(contract.root).as_posix()
-            info = ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
-            info.compress_type = ZIP_DEFLATED
-            info.external_attr = 0o100644 << 16
-            archive.writestr(
-                info,
-                source.read_bytes(),
-                compress_type=ZIP_DEFLATED,
-                compresslevel=9,
-            )
+    try:
+        with ZipFile(archive_path, "w") as archive:
+            for source in sources:
+                relative = source.relative_to(contract.root).as_posix()
+                info = ZipInfo(relative, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = ZIP_DEFLATED
+                info.external_attr = 0o100644 << 16
+                archive.writestr(
+                    info,
+                    source.read_bytes(),
+                    compress_type=ZIP_DEFLATED,
+                    compresslevel=9,
+                )
+    except OSError as error:
+        raise ReleaseArtifactError(archive_path) from error
     return archive_path
 
 

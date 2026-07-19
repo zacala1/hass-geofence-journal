@@ -19,10 +19,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: HACS validation
-        uses: hacs/action@d556e736723344f83838d08488c983a15381059a # 22.5.0
-        with:
-          category: "integration"
-          ignore: "brands"
+        uses: docker://ghcr.io/hacs/action@sha256:3b5eaf821de267ede11dfdd3a792679dfdc72f52bdaf395422b39f0cfad27120
+        env:
+          INPUT_CATEGORY: integration
+          INPUT_COMMENT: "false"
+          INPUT_GITHUB_TOKEN: ${{ github.token }}
+          INPUT_IGNORE: brands
+          INPUT_REPOSITORY: ${{ github.repository }}
 
   validate-hassfest:
     name: Hassfest
@@ -33,4 +36,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@f4ca6f671bd429efb108c0f2fa0ae8af0215986c
+        run: >-
+          docker run --rm
+          --volume "${GITHUB_WORKSPACE}:/github/workspace"
+          ghcr.io/home-assistant/hassfest@sha256:5fc3c5d7df109d248a61acfb0a675b38b1e4dc3a202feb260a8e33696f9803e3

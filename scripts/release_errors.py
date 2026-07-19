@@ -57,6 +57,23 @@ class ReleaseFileReadError(ReleaseCheckError):
 
 
 @final
+class InvalidReleaseMetadataError(ReleaseCheckError):
+    """A release metadata file is malformed or has the wrong shape."""
+
+    __slots__ = ("path",)
+
+    def __init__(self, path: Path) -> None:
+        """Store the invalid metadata path."""
+        super().__init__(path)
+        self.path = path
+
+    @override
+    def __str__(self) -> str:
+        """Render the invalid metadata path."""
+        return f"invalid release metadata: {self.path}"
+
+
+@final
 class MissingReleaseFieldError(ReleaseCheckError):
     """A required metadata field was absent."""
 
@@ -107,3 +124,41 @@ class MissingReleaseFilesError(ReleaseCheckError):
     def __str__(self) -> str:
         """Render the missing relative paths."""
         return f"release integration files missing: {', '.join(self.files)}"
+
+
+@final
+class ReleaseOutputDirectoryError(ReleaseCheckError):
+    """The archive destination overlaps the integration source."""
+
+    __slots__ = ("integration", "output")
+
+    def __init__(self, output: Path, integration: Path) -> None:
+        """Store the overlapping output and source paths."""
+        super().__init__(output, integration)
+        self.output = output
+        self.integration = integration
+
+    @override
+    def __str__(self) -> str:
+        """Render the invalid output directory."""
+        return (
+            "release output directory must be outside integration source: "
+            f"{self.output}"
+        )
+
+
+@final
+class ReleaseArtifactError(ReleaseCheckError):
+    """The release archive could not be created."""
+
+    __slots__ = ("path",)
+
+    def __init__(self, path: Path) -> None:
+        """Store the failed output path."""
+        super().__init__(path)
+        self.path = path
+
+    @override
+    def __str__(self) -> str:
+        """Render the failed output path."""
+        return f"cannot create release artifact: {self.path}"

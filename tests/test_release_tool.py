@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _release_root(tmp_path: Path) -> Path:
+def release_root(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     integration = root / "custom_components" / "geofence_journal"
     translations = integration / "translations"
@@ -38,6 +38,11 @@ requires-python = ">=3.14.2, <3.15"
 [[package]]
 name = "hass-geofence-journal"
 version = "0.1.0"
+
+[package.metadata]
+requires-dist = [
+    { name = "homeassistant", specifier = ">=2026.7,<2026.8" },
+]
 """,
         encoding="utf-8",
     )
@@ -74,7 +79,7 @@ version = "0.1.0"
 
 def test_check_release_accepts_consistent_root(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
 
     # When
     contract = check_release(root, "v0.1.0")
@@ -88,7 +93,7 @@ def test_check_release_accepts_consistent_root(tmp_path: Path) -> None:
 
 def test_check_release_rejects_manifest_version_drift(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
     manifest = root / "custom_components" / "geofence_journal" / "manifest.json"
     _ = manifest.write_text(
         manifest.read_text(encoding="utf-8").replace("0.1.0", "0.2.0"),
@@ -102,7 +107,7 @@ def test_check_release_rejects_manifest_version_drift(tmp_path: Path) -> None:
 
 def test_check_release_rejects_wrong_tag(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
 
     # When / Then
     with pytest.raises(ReleaseCheckError, match="tag"):
@@ -111,7 +116,7 @@ def test_check_release_rejects_wrong_tag(tmp_path: Path) -> None:
 
 def test_check_release_rejects_non_root_directory(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
     nested = root / "custom_components"
 
     # When / Then
@@ -121,7 +126,7 @@ def test_check_release_rejects_non_root_directory(tmp_path: Path) -> None:
 
 def test_check_release_rejects_incomplete_integration(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
     (root / "custom_components" / "geofence_journal" / "services.yaml").unlink()
 
     # When / Then
@@ -131,7 +136,7 @@ def test_check_release_rejects_incomplete_integration(tmp_path: Path) -> None:
 
 def test_build_release_creates_reproducible_install_tree(tmp_path: Path) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
     cache = root / "custom_components" / "geofence_journal" / "__pycache__"
     cache.mkdir()
     _ = (cache / "runtime.pyc").write_bytes(b"cache")
@@ -155,7 +160,7 @@ def test_cli_check_reports_deployment_contract(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
 
     # When
     exit_code = run_cli(("check", "v0.1.0"), root)
@@ -171,7 +176,7 @@ def test_cli_build_uses_requested_output_directory(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
 
     # When
     exit_code = run_cli(("build", "packages"), root)
@@ -187,7 +192,7 @@ def test_cli_rejects_unknown_command(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     # Given
-    root = _release_root(tmp_path)
+    root = release_root(tmp_path)
 
     # When
     exit_code = run_cli(("publish",), root)
@@ -195,3 +200,33 @@ def test_cli_rejects_unknown_command(
     # Then
     assert exit_code == 2
     assert capsys.readouterr().err.startswith("usage: release.py")
+
+
+def test_cli_help_reports_usage_successfully(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Given
+    root = release_root(tmp_path)
+
+    # When
+    exit_code = run_cli(("--help",), root)
+
+    # Then
+    assert exit_code == 0
+    assert capsys.readouterr().out.startswith("usage: release.py")
+
+
+def test_cli_build_reports_unusable_output_directory(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Given
+    root = release_root(tmp_path)
+    output = root / "not-a-directory"
+    _ = output.write_text("occupied", encoding="utf-8")
+
+    # When
+    exit_code = run_cli(("build", str(output)), root)
+
+    # Then
+    assert exit_code == 1
+    assert "release-check failed" in capsys.readouterr().err
