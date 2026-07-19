@@ -25,14 +25,53 @@ configuration.
 
 ### Manual installation
 
-1. Copy `custom_components/geofence_journal` into the `custom_components`
-   directory under your Home Assistant configuration directory.
+1. Download the release ZIP and extract it at the Home Assistant configuration
+   root, or copy `custom_components/geofence_journal` into the
+   `custom_components` directory under that root.
 2. Restart Home Assistant.
 
 For either method, go to **Settings > Devices & services > Add integration** and
 select **Geofence Journal**. The config flow creates the sole config entry and
 lets the administrator choose confirmation, cooldown, exit-margin, privacy, and
 database settings.
+
+## Deployment readiness
+
+Run release commands from the repository root on Linux with Python 3.14.2
+through 3.14.x. The checker fails outside the Git root or when the versions in
+`pyproject.toml`, `uv.lock`, `manifest.json`, `const.py`, HACS metadata, README,
+or CI runtime declarations disagree:
+
+```bash
+uv sync --all-groups --frozen
+uv run python -m scripts.release check
+uv run python -m scripts.release check v0.1.0
+uv run python -m scripts.release build dist
+```
+
+The build command creates a deterministic manual-install archive at
+`dist/hass-geofence-journal-v0.1.0.zip`. Its paths begin with
+`custom_components/geofence_journal`, so extract it at the Home Assistant
+configuration root.
+
+Before installing or upgrading, verify all of the following:
+
+1. Home Assistant is in the supported 2026.7 release line.
+2. The release runner uses Python 3.14.2 through 3.14.x; Python 3.13 is not a
+   supported release environment for Home Assistant 2026.7.
+3. The Home Assistant host has writable local storage and sufficient free space
+   for the dedicated database, WAL, export files, and SQLite compaction.
+4. A current Home Assistant backup exists and includes the configuration
+   directory. Export any journal data that must also remain human-readable.
+5. The integration health entity is checked after restart before old backups or
+   preserved database copies are removed.
+
+Maintainers publish only a tag matching the manifest version exactly, such as
+`v0.1.0`. A matching tag runs the locked Linux/Python environment check, root
+and version contract, Ruff, BasedPyright, pytest with at least 95% coverage,
+HACS, Hassfest, and deterministic ZIP generation before GitHub Release
+publication. A manual workflow run performs all verification and packaging but
+never publishes a release.
 
 ## Administrator setup
 

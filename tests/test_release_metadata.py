@@ -131,6 +131,58 @@ def test_ci_workflow_runs_every_local_release_gate() -> None:
     assert 'python-version: "3.14.2"' in workflow
 
 
+def test_release_tooling_is_included_in_strict_project_gates() -> None:
+    # Given: the project-level static analysis configuration.
+    pyproject = (ROOT / "pyproject.toml").read_text("utf-8")
+
+    # When: Ruff source roots and BasedPyright inputs are inspected.
+    strict_inputs = {
+        'src = ["custom_components", "scripts", "tests"]',
+        'include = ["custom_components/geofence_journal", "scripts", "tests"]',
+    }
+
+    # Then: deployment tooling cannot bypass lint or strict typing.
+    assert strict_inputs <= {
+        declaration for declaration in strict_inputs if declaration in pyproject
+    }
+
+
+def test_release_workflow_verifies_the_tag_before_publishing() -> None:
+    # Given: the tag-triggered release workflow.
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text("utf-8")
+
+    # When: immutable actions and deployment commands are inspected.
+    pinned_actions = {
+        "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
+        "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b",
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+    }
+    required_commands = {
+        'uv run python -m scripts.release check "${GITHUB_REF_NAME}"',
+        "uv run python -m scripts.release build dist",
+        'gh release create "${GITHUB_REF_NAME}" dist/*.zip',
+    }
+
+    # Then: a verified artifact is the only input to a tag-only publication job.
+    assert pinned_actions <= {action for action in pinned_actions if action in workflow}
+    assert required_commands <= {
+        command for command in required_commands if command in workflow
+    }
+    assert 'tags:\n      - "v[0-9]+.[0-9]+.[0-9]+"' in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "needs:\n      - verify" in workflow
+    assert "if: github.event_name == 'push' && github.ref_type == 'tag'" in workflow
+    assert "contents: write" in workflow
+    assert "GH_REPO: ${{ github.repository }}" in workflow
+    assert workflow.index("-m scripts.release check") < workflow.index(
+        "-m scripts.release build"
+    )
+    assert workflow.index("-m scripts.release build") < workflow.index(
+        "gh release create"
+    )
+
+
 def test_validation_workflow_uses_official_hacs_and_hassfest_actions() -> None:
     # Given: the repository validation workflow.
     workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text("utf-8")
