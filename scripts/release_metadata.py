@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import re
 import tomllib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -16,6 +17,7 @@ from scripts.release_errors import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 CONST_VERSION_PATTERN = re.compile(
@@ -25,6 +27,21 @@ LOCKFILE_PROJECT_PACKAGE_FIELD: Final = "lockfile project package"
 LOCKFILE_VERSION_FIELD: Final = "lockfile version"
 LOCKFILE_PROJECT_METADATA_FIELD: Final = "lockfile project metadata"
 CONSTANT_VERSION_FIELD: Final = "constant version"
+
+
+class _JsonLoader(Protocol):
+    """Typed boundary for the untyped standard-library JSON result."""
+
+    def __call__(
+        self,
+        source: str,
+        /,
+        *,
+        object_pairs_hook: Callable[
+            [list[tuple[str, object]]],
+            dict[str, object],
+        ],
+    ) -> object: ...
 
 
 class _ReleaseModel(BaseModel):
@@ -156,9 +173,25 @@ def _parse_toml[T: BaseModel](model: type[T], path: Path) -> T:
 
 def _parse_json[T: BaseModel](model: type[T], path: Path) -> T:
     try:
-        return model.model_validate_json(_read_text(path))
-    except ValidationError as error:
+        document = _decode_json(json.loads, _read_text(path))
+        return model.model_validate(document)
+    except ValueError as error:
         raise InvalidReleaseMetadataError(path) from error
+
+
+def _reject_duplicate_json_keys(
+    pairs: list[tuple[str, object]],
+) -> dict[str, object]:
+    document: dict[str, object] = {}
+    for key, value in pairs:
+        if key in document:
+            raise ValueError(key)
+        document[key] = value
+    return document
+
+
+def _decode_json(loader: _JsonLoader, source: str) -> object:
+    return loader(source, object_pairs_hook=_reject_duplicate_json_keys)
 
 
 def _locked_project(lockfile: _LockFile, project_name: str) -> _LockedPackage:

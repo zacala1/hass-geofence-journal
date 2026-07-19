@@ -35,18 +35,39 @@ def test_check_release_rejects_project_version_from_wrong_toml_section(
         _ = check_release(root)
 
 
-def test_check_release_rejects_duplicate_manifest_version(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("original", "replacement"),
+    [
+        (
+            '"version":"0.1.0"',
+            '"version":"0.2.0","version":"0.1.0"',
+        ),
+        (
+            '"version":"0.1.0"',
+            '"version":"0.1.0","version":"0.1.0"',
+        ),
+        (
+            '"domain":"geofence_journal"',
+            '"domain":"other_domain","domain":"geofence_journal"',
+        ),
+    ],
+)
+def test_check_release_rejects_duplicate_manifest_key(
+    tmp_path: Path,
+    original: str,
+    replacement: str,
+) -> None:
     # Given
     root = release_root(tmp_path)
     manifest = root / "custom_components" / "geofence_journal" / "manifest.json"
     _replace(
         manifest,
-        '"version":"0.1.0"',
-        '"version":"0.1.0","version":"0.2.0"',
+        original,
+        replacement,
     )
 
     # When / Then
-    with pytest.raises(ReleaseCheckError, match="version"):
+    with pytest.raises(ReleaseCheckError, match="invalid release metadata"):
         _ = check_release(root)
 
 
