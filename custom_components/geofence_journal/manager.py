@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, assert_never, final
 
 import anyio
 
@@ -215,6 +215,14 @@ class GeofenceJournalManager:
 
     def record_event(self, occurred_at: datetime) -> None:
         """Publish the latest committed automatic or manual event instant."""
+        match self._entity_state:
+            case HealthyEntityState(last_event_at=existing):
+                if existing is not None and occurred_at <= existing:
+                    return
+            case DatabaseErrorEntityState() | UnloadedEntityState():
+                pass
+            case unreachable:
+                assert_never(unreachable)
         self._replace_entity_state(HealthyEntityState(last_event_at=occurred_at))
 
     def _async_record_database_error(self) -> None:
