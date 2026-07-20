@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from traceback import format_exception
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
@@ -239,3 +240,8 @@ async def test_validation_error_does_not_echo_private_service_input(
     assert "invalid service data" in message
     assert private_note not in message
     assert str(private_latitude) not in message
+    traceback_text = "".join(format_exception(raised.value))
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+    assert private_note not in traceback_text
+    assert str(private_latitude) not in traceback_text

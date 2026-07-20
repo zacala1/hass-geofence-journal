@@ -83,7 +83,7 @@ def _service_handler(
         except ValidationError as error:
             count = error.error_count()
             detail = f"invalid service data ({count} validation error(s))"
-            raise ServiceValidationError(detail) from error
+            raise ServiceValidationError(detail) from None
         except (
             EventNotFoundError,
             MissingEventReferenceError,
