@@ -88,10 +88,13 @@ class AsyncSQLiteStore:
         """Stop accepting work, drain the gate, and close off-loop."""
         async with self._gate:
             self._closing = True
-            if self._opened:
-                with anyio.CancelScope(shield=True):
-                    await run_sync(self._store.close)
-                self._opened = False
+            try:
+                if self._opened:
+                    with anyio.CancelScope(shield=True):
+                        await run_sync(self._store.close)
+                    self._opened = False
+            finally:
+                self._closing = False
 
     def _ensure_accepting(self) -> None:
         if not self._opened or self._closing:
