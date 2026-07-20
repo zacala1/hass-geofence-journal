@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING, cast, final, override
 
+import anyio
 from homeassistant.exceptions import HomeAssistantError
 from pydantic import ValidationError
 
 from .const import DOMAIN
+from .lifecycle import attach_secondary_failure
 from .process_data import IntegrationProcessData
+from .storage.errors import StorageError
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -38,8 +42,20 @@ async def async_pre_backup(hass: HomeAssistant) -> None:
     if process_data.backup_pause is not None:
         return
     handle = await manager.async_pause(BACKUP_PAUSE_REASON)
+    try:
+        await manager.store.async_close()
+    except BaseException as primary_failure:
+        try:
+            with anyio.CancelScope(shield=True):
+                await manager.async_resume(handle)
+        except (OSError, sqlite3.Error, StorageError, RuntimeError) as failure:
+            attach_secondary_failure(
+                primary_failure,
+                failure,
+                operation="backup pause rollback",
+            )
+        raise
     hass.data[DOMAIN] = process_data.model_copy(update={"backup_pause": handle})
-    await manager.store.async_close()
 
 
 async def async_post_backup(hass: HomeAssistant) -> None:

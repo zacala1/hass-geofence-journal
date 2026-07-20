@@ -77,6 +77,7 @@ class GeofenceJournalManager:
         )
         self._refresh_lock = anyio.Lock()
         self._generation: ResourceGeneration | None = None
+        self._paused_generation: ResourceGeneration | None = None
         self._pause_handles: set[RuntimePauseHandle] = set()
         self._opened = False
         self._entity_state: GeofenceJournalEntityState = UnloadedEntityState()
@@ -158,6 +159,7 @@ class GeofenceJournalManager:
         """Stop observations and timers before draining and closing storage."""
         async with self._refresh_lock:
             await self._async_stop_observations_locked()
+            self._paused_generation = None
             self._pause_handles.clear()
             if self._opened:
                 await self._store.async_close()
@@ -169,6 +171,7 @@ class GeofenceJournalManager:
         handle = RuntimePauseHandle.create(reason=reason)
         async with self._refresh_lock:
             if not self._pause_handles:
+                self._paused_generation = self._generation
                 await self._async_stop_observations_locked()
             self._pause_handles.add(handle)
         return handle
@@ -183,11 +186,17 @@ class GeofenceJournalManager:
                     self._pause_handles.remove(handle)
                     return
                 (
-                    _resources,
+                    resources,
                     generation,
                 ) = await self._async_stage_current_resources_locked()
+                active_rule_ids = frozenset(
+                    str(configured.rule.rule_id) for configured in resources
+                )
+                paused_generation = self._paused_generation
                 self._generation = generation
+                self._paused_generation = None
                 self._pause_handles.remove(handle)
+                await async_deactivate_removed(paused_generation, active_rule_ids)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise

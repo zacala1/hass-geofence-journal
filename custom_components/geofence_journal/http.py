@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, Final, final
 
-from aiohttp.hdrs import CONTENT_DISPOSITION
-from aiohttp.web import FileResponse, Request, Response, StreamResponse
+from aiohttp.hdrs import CONTENT_DISPOSITION, CONTENT_TYPE
+from aiohttp.web import Request, Response, StreamResponse
 from homeassistant.components.http.decorators import require_admin
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_call_later
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from .export import ExportArtifact, ExportRegistry
 
 from .export import EXPORT_LIFETIME
+
+DOWNLOAD_CHUNK_SIZE: Final = 64 * 1024
 
 
 async def async_cleanup_orphaned_exports(
@@ -63,19 +65,31 @@ class ExportDownloadView(HomeAssistantView):
         self._registry = registry
 
     @require_admin
-    async def get(
-        self, request: Request, export_id: str
-    ) -> StreamResponse | FileResponse | Response:
+    async def get(self, request: Request, export_id: str) -> StreamResponse | Response:
         """Return the file only while its opaque identifier remains valid."""
         hass: HomeAssistant = request.app[KEY_HASS]
-        artifact = await hass.async_add_executor_job(self._registry.resolve, export_id)
-        if artifact is None:
+        download = await hass.async_add_executor_job(
+            self._registry.open_download, export_id
+        )
+        if download is None:
             return Response(status=HTTPStatus.NOT_FOUND)
-        return FileResponse(
-            artifact.path,
+        response = StreamResponse(
+            status=HTTPStatus.OK,
             headers={
+                CONTENT_TYPE: "text/csv; charset=utf-8",
                 CONTENT_DISPOSITION: (
-                    f'attachment; filename="geofence_journal_{artifact.export_id}.csv"'
-                )
+                    'attachment; filename="geofence_journal_'
+                    f'{download.artifact.export_id}.csv"'
+                ),
             },
         )
+        try:
+            _ = await response.prepare(request)
+            while chunk := await hass.async_add_executor_job(
+                download.stream.read, DOWNLOAD_CHUNK_SIZE
+            ):
+                await response.write(chunk)
+            _ = await response.write_eof()
+            return response
+        finally:
+            await hass.async_add_executor_job(download.stream.close)

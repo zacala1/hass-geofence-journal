@@ -13,10 +13,12 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from .const import STORAGE_DIRECTORY, STORAGE_INTEGRATION_DIRECTORY
+from .export_file import is_regular_file_without_links, open_verified_regular_file
 from .storage.records import utc_text
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+    from typing import BinaryIO
 
     from homeassistant.core import HomeAssistant
 
@@ -114,6 +116,14 @@ class ExportArtifact:
     url: str
 
 
+@dataclass(frozen=True, slots=True)
+class ExportDownload:
+    """A verified artifact and its stable open file descriptor."""
+
+    artifact: ExportArtifact
+    stream: BinaryIO
+
+
 @final
 class ExportRegistry:
     """Own short-lived export metadata and safe file cleanup."""
@@ -155,11 +165,23 @@ class ExportRegistry:
                 return None
             if (
                 self._clock.utc_now() >= artifact.expires_at
-                or not artifact.path.is_file()
+                or not is_regular_file_without_links(artifact.path)
             ):
                 self.discard(export_id)
                 return None
             return artifact
+
+    def open_download(self, export_id: str) -> ExportDownload | None:
+        """Open one active artifact without a path-replacement race."""
+        with self._lock:
+            artifact = self.resolve(export_id)
+            if artifact is None:
+                return None
+            stream = open_verified_regular_file(artifact.path)
+            if stream is None:
+                self.discard(export_id)
+                return None
+            return ExportDownload(artifact=artifact, stream=stream)
 
     def discard(self, export_id: str) -> None:
         """Forget an artifact and remove its file when present."""

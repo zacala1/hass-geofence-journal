@@ -176,3 +176,38 @@ async def test_failed_post_keeps_pause_handle_for_retry(
     await async_post_backup(hass)
     assert _process_data(hass).backup_pause is None
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_failed_pre_rolls_back_pause_and_allows_retry(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = await _setup_seeded_entry(hass, tmp_path / "backup-pre-retry.db")
+    manager = entry.runtime_data
+    original_close = manager.store.async_close
+    close_calls = 0
+
+    async def fail_first_close() -> None:
+        nonlocal close_calls
+        close_calls += 1
+        if close_calls == 1:
+            raise StorageClosedError
+        await original_close()
+
+    monkeypatch.setattr(manager.store, "async_close", fail_first_close)
+
+    with pytest.raises(StorageClosedError):
+        await async_pre_backup(hass)
+
+    assert _process_data(hass).backup_pause is None
+    assert manager.listener_entity_ids == ("person.fixture",)
+
+    await async_pre_backup(hass)
+
+    assert close_calls == 2
+    assert _process_data(hass).backup_pause is not None
+    assert manager.listener_entity_ids == ()
+    await async_post_backup(hass)
+    assert await hass.config_entries.async_unload(entry.entry_id)

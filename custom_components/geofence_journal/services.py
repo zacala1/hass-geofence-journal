@@ -81,7 +81,9 @@ def _service_handler(
         try:
             return await async_dispatch_service(action, call, backend)
         except ValidationError as error:
-            raise ServiceValidationError(str(error)) from error
+            count = error.error_count()
+            detail = f"invalid service data ({count} validation error(s))"
+            raise ServiceValidationError(detail) from error
         except (
             EventNotFoundError,
             MissingEventReferenceError,
