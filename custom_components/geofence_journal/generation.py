@@ -107,18 +107,6 @@ async def async_suspend_generation(generation: ResourceGeneration | None) -> Non
     await async_suspend_parts(generation.listener, generation.runtimes)
 
 
-async def async_deactivate_removed(
-    generation: ResourceGeneration | None,
-    active_rule_ids: frozenset[str],
-) -> None:
-    """Delete runtime state for rules absent from the committed replacement."""
-    if generation is None:
-        return
-    for runtime in generation.runtimes:
-        if str(runtime.resources.rule.rule_id) not in active_rule_ids:
-            await runtime.engine.async_deactivate()
-
-
 async def async_suspend_parts(
     listener: GeofenceTrackerListener | None,
     runtimes: tuple[RuleRuntime, ...],

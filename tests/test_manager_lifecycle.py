@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +18,7 @@ from tests.test_runtime_fixtures import runtime_resources, seed_runtime_resource
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from custom_components.geofence_journal.storage.db_types import SQLConnection
     from homeassistant.core import HomeAssistant
 
 
@@ -74,6 +76,35 @@ async def test_startup_sync_failure_commits_no_generation_and_closes_store(
     )
 
     with pytest.raises(RuntimeError, match="injected startup sync failure"):
+        await manager.async_start()
+
+    assert manager.listener_entity_ids == ()
+    with pytest.raises(StorageClosedError):
+        _ = await manager.store.async_run_operation(
+            lambda connection: connection.execute("SELECT 1").fetchone()
+        )
+
+
+async def test_startup_cleanup_failure_stops_published_generation_and_store(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "startup-cleanup.db"
+    _seed(path)
+    _set_tracker(hass, 0.01)
+    manager = GeofenceJournalManager(hass, _settings(path))
+
+    def fail_cleanup(_connection: SQLConnection) -> None:
+        detail = "injected runtime cleanup failure"
+        raise sqlite3.IntegrityError(detail)
+
+    monkeypatch.setattr(
+        "custom_components.geofence_journal.manager.delete_inactive_runtime_states",
+        fail_cleanup,
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="runtime cleanup failure"):
         await manager.async_start()
 
     assert manager.listener_entity_ids == ()

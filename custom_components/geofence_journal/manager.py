@@ -19,7 +19,6 @@ from .entity_state import (
 from .generation import (
     HomeAssistantRuntimeDependencyFactory,
     ResourceGeneration,
-    async_deactivate_removed,
     async_stage_resource_generation,
     async_suspend_generation,
 )
@@ -33,6 +32,7 @@ from .storage.async_adapter import AsyncSQLiteStore
 from .storage.errors import StorageError
 from .storage.events import latest_event_at
 from .storage.resources import list_active_resources
+from .storage.runtime_state import delete_inactive_runtime_states
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -43,7 +43,6 @@ if TYPE_CHECKING:
     from .models import Clock
     from .runtime.contracts import Scheduler
     from .settings import Settings
-    from .storage.resources import ConfiguredResources
 
 
 @final
@@ -134,6 +133,8 @@ class GeofenceJournalManager:
             raise
         finally:
             if not started and self._opened:
+                async with self._refresh_lock:
+                    await self._async_stop_observations_locked()
                 await self._store.async_close()
                 self._opened = False
 
@@ -143,14 +144,11 @@ class GeofenceJournalManager:
             async with self._refresh_lock:
                 if self._pause_handles:
                     return
-                resources, staged = await self._async_stage_current_resources_locked()
+                staged = await self._async_stage_current_resources_locked()
                 old_generation = self._generation
                 self._generation = staged
                 await async_suspend_generation(old_generation)
-                active_rule_ids = frozenset(
-                    str(configured.rule.rule_id) for configured in resources
-                )
-                await async_deactivate_removed(old_generation, active_rule_ids)
+                await self._store.async_run_operation(delete_inactive_runtime_states)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -185,18 +183,11 @@ class GeofenceJournalManager:
                 if len(self._pause_handles) > 1:
                     self._pause_handles.remove(handle)
                     return
-                (
-                    resources,
-                    generation,
-                ) = await self._async_stage_current_resources_locked()
-                active_rule_ids = frozenset(
-                    str(configured.rule.rule_id) for configured in resources
-                )
-                paused_generation = self._paused_generation
+                generation = await self._async_stage_current_resources_locked()
                 self._generation = generation
                 self._paused_generation = None
                 self._pause_handles.remove(handle)
-                await async_deactivate_removed(paused_generation, active_rule_ids)
+                await self._store.async_run_operation(delete_inactive_runtime_states)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -230,7 +221,7 @@ class GeofenceJournalManager:
 
     async def _async_stage_current_resources_locked(
         self,
-    ) -> tuple[tuple[ConfiguredResources, ...], ResourceGeneration]:
+    ) -> ResourceGeneration:
         resources = await self._store.async_run_operation(list_active_resources)
         generation = await async_stage_resource_generation(
             self._hass,
@@ -243,7 +234,7 @@ class GeofenceJournalManager:
         try:
             await self._async_update_recovered_last_event()
             completed = True
-            return resources, generation
+            return generation
         finally:
             if not completed:
                 await async_suspend_generation(generation)

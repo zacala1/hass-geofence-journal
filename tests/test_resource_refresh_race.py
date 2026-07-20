@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import sqlite3
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final, final
 from uuid import UUID
 
+import pytest
 from custom_components.geofence_journal.export import ExportRegistry
 from custom_components.geofence_journal.maintenance import (
     UpsertPlaceRequest,
@@ -212,6 +214,71 @@ async def test_service_disable_deactivates_removed_rule_runtime_state(
                 enabled=False,
             )
         )
+
+        assert manager.listener_entity_ids == ()
+        assert await manager.store.async_runtime_state(str(RULE_ID)) is None
+    finally:
+        await manager.async_stop()
+
+
+async def test_failed_service_disable_cleanup_is_retried(
+    hass: HomeAssistant, tmp_path: Path
+) -> None:
+    path = tmp_path / "service-disable-retry.db"
+    _seed_coordinate_rule(path)
+    hass.states.async_set(
+        "person.alice",
+        "away",
+        {ATTR_LATITUDE: 0.01, ATTR_LONGITUDE: 0.0, ATTR_GPS_ACCURACY: 5},
+    )
+    settings = Settings(
+        store_coordinates=False,
+        enter_confirmation_seconds=Seconds(0),
+        exit_confirmation_seconds=Seconds(0),
+        cooldown_seconds=Seconds(0),
+        exit_margin_meters=Meters(50),
+        database_path=str(path),
+    )
+    manager = GeofenceJournalManager(hass, settings)
+    await manager.async_start()
+    backend = SQLiteManagementBackend(
+        manager.store,
+        ManagementBackendDependencies(
+            exports=ExportRegistry(tmp_path / "exports", manager.clock),
+            coordinator=manager,
+            clock=manager.clock,
+            settings=settings,
+            schedule_export_cleanup=lambda _artifact: None,
+            on_event=manager.record_event,
+        ),
+    )
+    request = UpsertRuleRequest(
+        resource_id=UUID(str(RULE_ID)),
+        name="Disabled",
+        tracker_id=UUID(str(TRACKER_ID)),
+        place_id=UUID(str(PLACE_ID)),
+        journal_id=UUID(str(JOURNAL_ID)),
+        enabled=False,
+    )
+    _ = await manager.store.async_run_operation(
+        lambda connection: connection.execute(
+            """CREATE TRIGGER reject_runtime_delete
+            BEFORE DELETE ON runtime_states
+            BEGIN SELECT RAISE(ABORT, 'delete fault'); END"""
+        )
+    )
+
+    try:
+        with pytest.raises(sqlite3.IntegrityError, match="delete fault"):
+            _ = await backend.async_upsert_rule(request)
+
+        assert manager.listener_entity_ids == ()
+        assert await manager.store.async_runtime_state(str(RULE_ID)) is not None
+        _ = await manager.store.async_run_operation(
+            lambda connection: connection.execute("DROP TRIGGER reject_runtime_delete")
+        )
+
+        _ = await backend.async_upsert_rule(request)
 
         assert manager.listener_entity_ids == ()
         assert await manager.store.async_runtime_state(str(RULE_ID)) is None
