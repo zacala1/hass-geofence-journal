@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from custom_components.geofence_journal.backup import (
+    BackupProcessDataError,
     async_post_backup,
     async_pre_backup,
 )
@@ -18,18 +19,24 @@ from custom_components.geofence_journal.const import (
     DOMAIN,
     TITLE,
 )
+from custom_components.geofence_journal.export import ExportRegistry
+from custom_components.geofence_journal.lifecycle import RuntimePauseHandle
 from custom_components.geofence_journal.process_data import IntegrationProcessData
 from custom_components.geofence_journal.storage import SQLiteStore
 from custom_components.geofence_journal.storage.db_types import required_integer
 from custom_components.geofence_journal.storage.errors import StorageClosedError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
-from tests.test_runtime_fixtures import runtime_resources, seed_runtime_resources
+from tests.test_runtime_fixtures import (
+    RUNTIME_START,
+    RecoveryClock,
+    runtime_resources,
+    seed_runtime_resources,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from custom_components.geofence_journal import GeofenceJournalConfigEntry
-    from custom_components.geofence_journal.lifecycle import RuntimePauseHandle
     from custom_components.geofence_journal.storage.db_types import SQLConnection
     from homeassistant.core import HomeAssistant
 
@@ -106,6 +113,43 @@ async def test_backup_hooks_noop_without_loaded_entry(hass: HomeAssistant) -> No
     await async_post_backup(hass)
 
     assert DOMAIN not in hass.data
+
+
+async def test_post_backup_clears_orphaned_pause_without_loaded_entry(
+    hass: HomeAssistant, tmp_path: Path
+) -> None:
+    process_data = IntegrationProcessData(
+        exports=ExportRegistry(tmp_path / "exports", RecoveryClock(RUNTIME_START)),
+        backup_pause=RuntimePauseHandle.create(reason="orphaned-backup"),
+    )
+    hass.data[DOMAIN] = process_data
+
+    await async_post_backup(hass)
+
+    assert _process_data(hass).backup_pause is None
+
+
+async def test_malformed_backup_process_data_is_rejected(hass: HomeAssistant) -> None:
+    hass.data[DOMAIN] = {"exports": "not-an-export-registry"}
+
+    with pytest.raises(BackupProcessDataError) as raised:
+        await async_post_backup(hass)
+
+    assert str(raised.value) == "invalid Geofence Journal backup process data"
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_loaded_manager_requires_process_data_before_backup(
+    hass: HomeAssistant, tmp_path: Path
+) -> None:
+    entry = await _setup_seeded_entry(hass, tmp_path / "backup-process-data.db")
+    process_data = IntegrationProcessData.model_validate(hass.data.pop(DOMAIN))
+    try:
+        with pytest.raises(BackupProcessDataError):
+            await async_pre_backup(hass)
+    finally:
+        hass.data[DOMAIN] = process_data
+        assert await hass.config_entries.async_unload(entry.entry_id)
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
