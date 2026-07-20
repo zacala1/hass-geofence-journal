@@ -212,6 +212,9 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     assert "contents: write" in workflow
     assert "GH_REPO: ${{ github.repository }}" in workflow
     assert "--prerelease" in workflow
+    assert "--json isLatest" not in workflow
+    assert "latestRelease{tagName}" in workflow
+    assert 'test "${latest_tag}" != "${GITHUB_REF_NAME}"' in workflow
     assert workflow.index("-m scripts.release check") < workflow.index(
         "-m scripts.release build"
     )
