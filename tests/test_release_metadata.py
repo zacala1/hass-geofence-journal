@@ -5,6 +5,7 @@ from pydantic import TypeAdapter
 
 ROOT: Final = Path(__file__).parents[1]
 REPOSITORY_URL: Final = "https://github.com/zacala1/hass-geofence-journal"
+PYDANTIC_REQUIREMENT: Final = "pydantic==2.13.4"
 
 
 class ReleaseManifest(TypedDict):
@@ -25,17 +26,24 @@ class ReleaseManifest(TypedDict):
 class HacsMetadata(TypedDict):
     name: str
     content_in_root: bool
+    filename: str
+    hide_default_branch: bool
     homeassistant: str
+    zip_release: bool
 
 
-def test_manifest_describes_the_custom_integration_release() -> None:
-    # Given: the integration manifest at the HACS package boundary.
-    manifest = TypeAdapter(ReleaseManifest).validate_json(
+def _manifest() -> ReleaseManifest:
+    return TypeAdapter(ReleaseManifest).validate_json(
         (ROOT / "custom_components" / "geofence_journal" / "manifest.json").read_text(
             "utf-8"
         ),
         extra="forbid",
     )
+
+
+def test_manifest_describes_the_custom_integration_release() -> None:
+    # Given: the integration manifest at the HACS package boundary.
+    manifest = _manifest()
 
     # When: release identity and behavior metadata are read.
     release_contract = (
@@ -50,7 +58,7 @@ def test_manifest_describes_the_custom_integration_release() -> None:
     assert release_contract == (
         "geofence_journal",
         "Geofence Journal",
-        "0.1.0",
+        "0.1.0b1",
         "service",
         "calculated",
     )
@@ -60,7 +68,17 @@ def test_manifest_describes_the_custom_integration_release() -> None:
     assert manifest["config_flow"] is True
     assert manifest["single_config_entry"] is True
     assert manifest["dependencies"] == ["http"]
-    assert manifest["requirements"] == []
+
+
+def test_manifest_installs_pydantic_for_a_clean_home_assistant() -> None:
+    # Given: runtime modules import Pydantic before config-entry setup can run.
+    manifest = _manifest()
+
+    # When: Home Assistant resolves the integration's external requirements.
+    requirements = manifest["requirements"]
+
+    # Then: the tested runtime version is installed on a clean HA environment.
+    assert requirements == [PYDANTIC_REQUIREMENT]
 
 
 def test_hacs_metadata_targets_the_supported_home_assistant_release() -> None:
@@ -74,11 +92,21 @@ def test_hacs_metadata_targets_the_supported_home_assistant_release() -> None:
     package_contract = (
         metadata["name"],
         metadata["content_in_root"],
+        metadata["filename"],
+        metadata["hide_default_branch"],
         metadata["homeassistant"],
+        metadata["zip_release"],
     )
 
     # Then: HACS installs the nested integration only on its tested HA baseline.
-    assert package_contract == ("Geofence Journal", False, "2026.7.0")
+    assert package_contract == (
+        "Geofence Journal",
+        False,
+        "geofence_journal.zip",
+        True,
+        "2026.7.0",
+        True,
+    )
 
 
 def test_readme_documents_the_release_safety_contract() -> None:
@@ -99,6 +127,9 @@ def test_readme_documents_the_release_safety_contract() -> None:
         "never silently",
         "Recorder",
         ".storage/geofence_journal/geofence_journal.db",
+        "v0.1.0b1",
+        "HACS prerelease",
+        "outside the Home Assistant configuration directory",
     }
 
     # Then: installation, privacy, retention, and destructive recovery are explicit.
@@ -118,12 +149,14 @@ def test_ci_workflow_runs_every_local_release_gate() -> None:
     )
 
     # When: its immutable release commands are inspected.
+    pytest_command = "uv run pytest --cov=custom_components.geofence_journal"
+    coverage_options = "--cov-branch --cov-fail-under=95"
     commands = {
         "uv sync --all-groups --frozen",
         "uv run ruff check .",
         "uv run ruff format --check .",
         "uv run basedpyright",
-        "uv run pytest --cov=custom_components.geofence_journal --cov-fail-under=95",
+        f"{pytest_command} {coverage_options}",
     }
 
     # Then: CI enforces sync, lint, format, types, tests, and the coverage floor.
@@ -163,7 +196,8 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     required_commands = {
         'uv run python -m scripts.release check "${GITHUB_REF_NAME}"',
         "uv run python -m scripts.release build dist",
-        'gh release create "${GITHUB_REF_NAME}" dist/*.zip',
+        'gh release create "${GITHUB_REF_NAME}" dist/geofence_journal.zip',
+        "PRERELEASE: ${{ needs.verify.outputs.prerelease }}",
     }
 
     # Then: a verified artifact is the only input to a tag-only publication job.
@@ -171,12 +205,16 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     assert required_commands <= {
         command for command in required_commands if command in workflow
     }
-    assert 'tags:\n      - "v[0-9]+.[0-9]+.[0-9]+"' in workflow
+    assert 'tags:\n      - "v*"' in workflow
     assert "workflow_dispatch:" in workflow
     assert "needs:\n      - verify" in workflow
     assert "if: github.event_name == 'push' && github.ref_type == 'tag'" in workflow
     assert "contents: write" in workflow
     assert "GH_REPO: ${{ github.repository }}" in workflow
+    assert "--prerelease" in workflow
+    assert "--json isLatest" not in workflow
+    assert "latestRelease{tagName}" in workflow
+    assert 'test "${latest_tag}" != "${GITHUB_REF_NAME}"' in workflow
     assert workflow.index("-m scripts.release check") < workflow.index(
         "-m scripts.release build"
     )

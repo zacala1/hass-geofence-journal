@@ -14,6 +14,8 @@ from scripts.release_errors import (
     RepositoryRootError,
 )
 from scripts.release_metadata import ReleaseMetadata, load_release_metadata
+from scripts.release_repository import validate_clean_worktree
+from scripts.release_sources import validated_release_sources
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,9 +29,13 @@ LOCK_HOME_ASSISTANT_REQUIREMENT: Final = ">=2026.7,<2026.8"
 MINIMUM_HOME_ASSISTANT: Final = "2026.7.0"
 MINIMUM_PYTHON: Final = (3, 14, 2)
 MAXIMUM_PYTHON: Final = (3, 15)
-VERSION_PATTERN: Final = re.compile(r"\d+\.\d+\.\d+")
+VERSION_PATTERN: Final = re.compile(
+    r"(?P<release>\d+\.\d+\.\d+)(?:(?P<phase>b|rc)(?P<number>[1-9]\d*))?"
+)
+RELEASE_FILENAME: Final = "geofence_journal.zip"
 REQUIRED_INTEGRATION_FILES: Final = (
     "__init__.py",
+    "backup.py",
     "binary_sensor.py",
     "config_flow.py",
     "const.py",
@@ -48,6 +54,9 @@ LOCK_PYTHON_FIELD: Final = "lockfile Python requirement"
 PROJECT_HOME_ASSISTANT_FIELD: Final = "pyproject Home Assistant requirement"
 LOCK_HOME_ASSISTANT_FIELD: Final = "lockfile Home Assistant requirement"
 HACS_VERSION_FIELD: Final = "HACS Home Assistant version"
+HACS_FILENAME_FIELD: Final = "HACS release filename"
+HACS_ZIP_RELEASE_FIELD: Final = "HACS zip release setting"
+HACS_DEFAULT_BRANCH_FIELD: Final = "HACS default branch visibility"
 RELEASE_TAG_FIELD: Final = "release tag"
 
 
@@ -60,6 +69,7 @@ class ReleaseContract:
     domain: str
     minimum_home_assistant: str
     python_requirement: str
+    prerelease: bool
 
 
 def check_release(root: Path, expected_tag: str | None = None) -> ReleaseContract:
@@ -71,16 +81,20 @@ def check_release(root: Path, expected_tag: str | None = None) -> ReleaseContrac
         project_name=PROJECT_NAME,
         domain=DOMAIN,
     )
-    version = _validate_identity(metadata)
+    version, prerelease = _validate_identity(metadata)
     _validate_environment(metadata, version)
     _validate_tag(version, expected_tag)
-    _validate_integration_files(metadata.manifest_path.parent)
+    integration = metadata.manifest_path.parent
+    _validate_integration_files(integration)
+    _ = validated_release_sources(resolved, integration)
+    validate_clean_worktree(resolved)
     return ReleaseContract(
         root=resolved,
         version=version,
         domain=metadata.manifest_domain,
         minimum_home_assistant=metadata.hacs_home_assistant_version,
         python_requirement=PYTHON_REQUIREMENT,
+        prerelease=prerelease,
     )
 
 
@@ -96,7 +110,7 @@ def _validate_interpreter() -> None:
         raise ReleaseEnvironmentError
 
 
-def _validate_identity(metadata: ReleaseMetadata) -> str:
+def _validate_identity(metadata: ReleaseMetadata) -> tuple[str, bool]:
     if metadata.project_name != PROJECT_NAME:
         raise ReleaseMismatchError(
             PROJECT_NAME_FIELD,
@@ -104,8 +118,13 @@ def _validate_identity(metadata: ReleaseMetadata) -> str:
             metadata.project_name,
         )
     version = metadata.project_version
-    if VERSION_PATTERN.fullmatch(version) is None:
-        raise ReleaseMismatchError(SEMANTIC_VERSION_FIELD, "X.Y.Z", version)
+    version_match = VERSION_PATTERN.fullmatch(version)
+    if version_match is None:
+        raise ReleaseMismatchError(
+            SEMANTIC_VERSION_FIELD,
+            "X.Y.Z, X.Y.ZbN, or X.Y.ZrcN",
+            version,
+        )
     declared = (
         metadata.manifest_version,
         metadata.constants_version,
@@ -122,7 +141,7 @@ def _validate_identity(metadata: ReleaseMetadata) -> str:
             DOMAIN,
             metadata.manifest_domain,
         )
-    return version
+    return version, version_match.group("phase") is not None
 
 
 def _validate_environment(metadata: ReleaseMetadata, version: str) -> None:
@@ -151,6 +170,17 @@ def _validate_environment(metadata: ReleaseMetadata, version: str) -> None:
         HACS_VERSION_FIELD,
         MINIMUM_HOME_ASSISTANT,
         metadata.hacs_home_assistant_version,
+    )
+    _require_equal(HACS_FILENAME_FIELD, RELEASE_FILENAME, metadata.hacs_filename)
+    _require_equal(
+        HACS_ZIP_RELEASE_FIELD,
+        "true",
+        str(metadata.hacs_zip_release).lower(),
+    )
+    _require_equal(
+        HACS_DEFAULT_BRANCH_FIELD,
+        "true",
+        str(metadata.hacs_hide_default_branch).lower(),
     )
     for marker in (f"Version {version}", "Python 3.14.2", "Home Assistant 2026.7"):
         _require_marker(metadata.readme, marker, "README environment/version")

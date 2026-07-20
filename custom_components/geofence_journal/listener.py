@@ -153,10 +153,20 @@ class GeofenceTrackerListener:
         self._remove = async_track_state_change_event(
             self._hass, self.entity_ids, self._async_handle_event
         )
+        synchronized = False
+        try:
+            await self.async_sync_existing_states()
+            synchronized = True
+        finally:
+            if not synchronized:
+                await self.async_stop()
+
+    async def async_sync_existing_states(self) -> None:
+        """Process current tracker snapshots for a staged generation."""
         for entity_id in self.entity_ids:
             state = self._hass.states.get(entity_id)
             if state is not None:
-                await self.async_process_state(state)
+                await self._async_process_state(state)
 
     async def async_stop(self) -> None:
         """Invalidate queued callbacks and unregister this generation."""
@@ -181,6 +191,9 @@ class GeofenceTrackerListener:
         """Evaluate one HA tracker sample against every linked active rule."""
         if not self._active:
             return
+        await self._async_process_state(state)
+
+    async def _async_process_state(self, state: State) -> None:
         for runtime in self._runtimes:
             if runtime.resources.tracker.entity_id != state.entity_id:
                 continue

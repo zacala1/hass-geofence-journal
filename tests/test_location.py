@@ -109,6 +109,34 @@ def test_equal_timestamp_is_not_older_and_is_accepted() -> None:
     assert isinstance(result, NormalizedObservation)
 
 
+def test_missing_accuracy_is_accepted_without_inventing_precision() -> None:
+    result = normalize_tracker_observation(
+        raw_observation(accuracy=None), last_accepted_at=None
+    )
+
+    assert isinstance(result, NormalizedObservation)
+    assert result.accuracy_m is None
+
+
+@pytest.mark.parametrize("accuracy", [-0.1, "invalid", float("inf")])
+def test_invalid_accuracy_is_ignored(accuracy: float | str) -> None:
+    result = normalize_tracker_observation(
+        raw_observation(accuracy=accuracy), last_accepted_at=None
+    )
+
+    assert result == IgnoredObservation(IgnoreReason.INVALID_ACCURACY, NOW)
+
+
+def test_naive_tracker_timestamp_is_ignored() -> None:
+    naive = NOW.replace(tzinfo=None)
+
+    result = normalize_tracker_observation(
+        raw_observation(observed_at=naive), last_accepted_at=None
+    )
+
+    assert result == IgnoredObservation(IgnoreReason.INVALID_TIMESTAMP, naive)
+
+
 def test_coordinate_place_resolves_without_zone_lookup() -> None:
     # Given a fixed coordinate place
     place = CoordinatePlace(
@@ -125,6 +153,19 @@ def test_coordinate_place_resolves_without_zone_lookup() -> None:
     # Then configured geometry is used and HA zones are not queried
     assert result == ResolvedPlace(center=place.center, radius_m=place.radius_m)
     assert zones.calls == 0
+
+
+def test_invalid_fixed_place_geometry_is_ignored() -> None:
+    place = CoordinatePlace(
+        place_id=PlaceId("place-1"),
+        name="Invalid",
+        center=Coordinates(91.0, 127.0),
+        radius_m=Meters(200.0),
+    )
+
+    result = resolve_place(place, MutableZoneLookup(None), observed_at=NOW)
+
+    assert result == IgnoredObservation(IgnoreReason.INVALID_ZONE, NOW)
 
 
 def test_zone_geometry_is_read_fresh_on_each_tracker_observation() -> None:
@@ -154,6 +195,22 @@ def test_missing_zone_is_ignored() -> None:
     assert result == IgnoredObservation(
         reason=IgnoreReason.MISSING_ZONE, observed_at=NOW
     )
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        ZoneSnapshot(None, 127.0, 100.0),
+        ZoneSnapshot(37.0, None, 100.0),
+        ZoneSnapshot(37.0, 127.0, None),
+    ],
+)
+def test_incomplete_zone_geometry_is_ignored(snapshot: ZoneSnapshot) -> None:
+    place = ZonePlace(PlaceId("place-1"), "Home", "zone.home")
+
+    result = resolve_place(place, MutableZoneLookup(snapshot), observed_at=NOW)
+
+    assert result == IgnoredObservation(IgnoreReason.INVALID_ZONE, NOW)
 
 
 @pytest.mark.parametrize(

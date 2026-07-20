@@ -5,7 +5,8 @@ from __future__ import annotations
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, final
+from sys import exception as active_exception
+from typing import TYPE_CHECKING, assert_never, final
 
 import anyio
 
@@ -15,17 +16,23 @@ from .entity_state import (
     HealthyEntityState,
     UnloadedEntityState,
 )
+from .generation import (
+    HomeAssistantRuntimeDependencyFactory,
+    ResourceGeneration,
+    async_stage_resource_generation,
+    async_suspend_generation,
+)
 from .ha_clock import HomeAssistantClock, HomeAssistantScheduler, UUIDEventIdFactory
-from .ha_confirmation import HomeAssistantConfirmationEvaluator
-from .ha_observer import HomeAssistantTransitionObserver
-from .listener import GeofenceTrackerListener, RuleRuntime
-from .models import LocationSource
-from .runtime.contracts import RuntimeDependencies
-from .runtime.engine import RuleTransitionEngine
+from .lifecycle import (
+    RuntimePauseHandle,
+    RuntimePauseTokenError,
+    attach_secondary_failure,
+)
 from .storage.async_adapter import AsyncSQLiteStore
 from .storage.errors import StorageError
 from .storage.events import latest_event_at
 from .storage.resources import list_active_resources
+from .storage.runtime_state import delete_inactive_runtime_states
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Callable
@@ -34,9 +41,8 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
     from .models import Clock
-    from .runtime.contracts import Scheduler, TransitionObserver
+    from .runtime.contracts import Scheduler
     from .settings import Settings
-    from .storage.resources import ConfiguredResources
 
 
 @final
@@ -60,10 +66,19 @@ class GeofenceJournalManager:
             HomeAssistantScheduler(hass) if scheduler is None else scheduler
         )
         self._event_ids = UUIDEventIdFactory()
+        self._dependency_factory = HomeAssistantRuntimeDependencyFactory(
+            hass,
+            self._clock,
+            self._scheduler,
+            self._event_ids,
+            settings.store_coordinates,
+            self.record_event,
+        )
         self._refresh_lock = anyio.Lock()
-        self._runtimes: tuple[RuleRuntime, ...] = ()
-        self._listener: GeofenceTrackerListener | None = None
-        self._paused = False
+        self._maintenance_lock = anyio.Lock()
+        self._generation: ResourceGeneration | None = None
+        self._pause_handles: set[RuntimePauseHandle] = set()
+        self._maintenance_pause: RuntimePauseHandle | None = None
         self._opened = False
         self._entity_state: GeofenceJournalEntityState = UnloadedEntityState()
         self._entity_listeners: set[Callable[[], None]] = set()
@@ -91,8 +106,8 @@ class GeofenceJournalManager:
     @property
     def listener_entity_ids(self) -> tuple[str, ...]:
         """Return only the current listener generation's entity IDs."""
-        listener = self._listener
-        return () if listener is None else listener.entity_ids
+        generation = self._generation
+        return () if generation is None else generation.entity_ids
 
     def async_subscribe_entity_state(
         self, listener: Callable[[], None]
@@ -107,33 +122,34 @@ class GeofenceJournalManager:
 
     async def async_start(self) -> None:
         """Open storage, recover enabled rules, and install the listener."""
+        started = False
         try:
             await self._store.async_open()
             self._opened = True
             self._replace_entity_state(HealthyEntityState(last_event_at=None))
             await self.async_refresh_resources()
+            started = True
         except OSError, sqlite3.Error, StorageError:
             self._replace_entity_state(DatabaseErrorEntityState())
-            if self._opened:
+            raise
+        finally:
+            if not started and self._opened:
+                async with self._refresh_lock:
+                    await self._async_stop_observations_locked()
                 await self._store.async_close()
                 self._opened = False
-            raise
 
     async def async_refresh_resources(self) -> None:
         """Replace listeners and recovered engines from enabled DB resources."""
         try:
             async with self._refresh_lock:
-                old_runtimes = await self._async_stop_observations_locked()
-                if self._paused:
+                if self._pause_handles:
                     return
-                resources = await self._store.async_run_operation(list_active_resources)
-                active_rule_ids = {
-                    str(configured.rule.rule_id) for configured in resources
-                }
-                for runtime in old_runtimes:
-                    if str(runtime.resources.rule.rule_id) not in active_rule_ids:
-                        await runtime.engine.async_deactivate()
-                await self._async_build_resources_locked(resources)
+                await self._store.async_run_operation(delete_inactive_runtime_states)
+                staged = await self._async_stage_current_resources_locked()
+                old_generation = self._generation
+                self._generation = staged
+                await async_suspend_generation(old_generation)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -141,18 +157,48 @@ class GeofenceJournalManager:
     async def async_stop(self) -> None:
         """Stop observations and timers before draining and closing storage."""
         async with self._refresh_lock:
-            _ = await self._async_stop_observations_locked()
+            await self._async_stop_observations_locked()
+            self._pause_handles.clear()
+            self._maintenance_pause = None
             if self._opened:
                 await self._store.async_close()
                 self._opened = False
             self._replace_entity_state(UnloadedEntityState())
 
+    async def async_pause(self, reason: str) -> RuntimePauseHandle:
+        """Pause observations and return a unique resume capability."""
+        handle = RuntimePauseHandle.create(reason=reason)
+        async with self._refresh_lock:
+            if not self._pause_handles:
+                await self._async_stop_observations_locked()
+            self._pause_handles.add(handle)
+        return handle
+
+    async def async_resume(self, handle: RuntimePauseHandle) -> None:
+        """Consume one pause capability and rebuild after the final pause."""
+        try:
+            async with self._refresh_lock:
+                if handle not in self._pause_handles:
+                    raise RuntimePauseTokenError(handle)
+                if len(self._pause_handles) > 1:
+                    self._pause_handles.remove(handle)
+                    return
+                await self._store.async_run_operation(delete_inactive_runtime_states)
+                generation = await self._async_stage_current_resources_locked()
+                self._generation = generation
+                self._pause_handles.remove(handle)
+        except OSError, sqlite3.Error, StorageError:
+            self._async_record_database_error()
+            raise
+
     @asynccontextmanager
     async def pause_and_drain(self) -> AsyncGenerator[None]:
         """Pause observations and drain engines around maintenance work."""
-        async with self._refresh_lock:
-            self._paused = True
-            _ = await self._async_stop_observations_locked()
+        async with self._maintenance_lock:
+            handle = self._maintenance_pause
+            if handle is None:
+                handle = await self.async_pause("management-maintenance")
+                self._maintenance_pause = handle
             database_failed = False
             try:
                 yield
@@ -161,60 +207,58 @@ class GeofenceJournalManager:
                 self._async_record_database_error()
                 raise
             finally:
-                self._paused = False
-                resources = await self._store.async_run_operation(list_active_resources)
-                await self._async_build_resources_locked(resources)
+                primary_failure = active_exception()
+                try:
+                    with anyio.CancelScope(shield=True):
+                        await self.async_resume(handle)
+                except (OSError, sqlite3.Error, StorageError, RuntimeError) as failure:
+                    if primary_failure is None:
+                        raise
+                    attach_secondary_failure(
+                        primary_failure,
+                        failure,
+                        operation="runtime resume",
+                    )
+                else:
+                    self._maintenance_pause = None
                 if database_failed:
                     self._async_record_database_error()
 
-    async def _async_stop_observations_locked(self) -> tuple[RuleRuntime, ...]:
-        listener = self._listener
-        self._listener = None
-        if listener is not None:
-            await listener.async_stop()
-        runtimes = self._runtimes
-        for runtime in runtimes:
-            await runtime.engine.async_suspend()
-        self._runtimes = ()
-        return runtimes
-
-    async def _async_build_resources_locked(
-        self, resources: tuple[ConfiguredResources, ...]
-    ) -> None:
-        runtimes: list[RuleRuntime] = []
-        for configured in resources:
-            engine = RuleTransitionEngine(
-                configured.rule,
-                self._store,
-                RuntimeDependencies(
-                    clock=self._clock,
-                    scheduler=self._scheduler,
-                    event_ids=self._event_ids,
-                    source=LocationSource.GPS,
-                    store_coordinates=self._settings.store_coordinates,
-                    observer=self._transition_observer(configured),
-                    confirmation_evaluator=HomeAssistantConfirmationEvaluator(
-                        self._hass, configured
-                    ),
-                ),
-            )
-            await engine.async_recover()
-            runtimes.append(RuleRuntime(configured, engine))
-        self._runtimes = tuple(runtimes)
-        await self._async_update_recovered_last_event()
-        listener = GeofenceTrackerListener(
-            self._hass, self._runtimes, self._async_record_database_error
+    async def _async_stage_current_resources_locked(
+        self,
+    ) -> ResourceGeneration:
+        resources = await self._store.async_run_operation(list_active_resources)
+        generation = await async_stage_resource_generation(
+            self._hass,
+            self._store,
+            resources,
+            self._dependency_factory.build,
+            self._async_record_database_error,
         )
-        self._listener = listener
-        await listener.async_start()
+        completed = False
+        try:
+            await self._async_update_recovered_last_event()
+            completed = True
+            return generation
+        finally:
+            if not completed:
+                await async_suspend_generation(generation)
 
-    def _transition_observer(
-        self, resources: ConfiguredResources
-    ) -> TransitionObserver:
-        return HomeAssistantTransitionObserver(self._hass, resources, self.record_event)
+    async def _async_stop_observations_locked(self) -> None:
+        generation = self._generation
+        self._generation = None
+        await async_suspend_generation(generation)
 
     def record_event(self, occurred_at: datetime) -> None:
         """Publish the latest committed automatic or manual event instant."""
+        match self._entity_state:
+            case HealthyEntityState(last_event_at=existing):
+                if existing is not None and occurred_at <= existing:
+                    return
+            case DatabaseErrorEntityState() | UnloadedEntityState():
+                pass
+            case unreachable:
+                assert_never(unreachable)
         self._replace_entity_state(HealthyEntityState(last_event_at=occurred_at))
 
     def _async_record_database_error(self) -> None:

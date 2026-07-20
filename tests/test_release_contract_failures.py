@@ -183,3 +183,58 @@ def test_build_release_rejects_source_symlink(tmp_path: Path) -> None:
     # When / Then
     with pytest.raises(ReleaseCheckError, match="symlink"):
         _ = build_release(root, tmp_path / "dist")
+
+
+def test_check_release_rejects_dirty_tracked_file(tmp_path: Path) -> None:
+    root = release_root(tmp_path)
+    readme = root / "README.md"
+    _ = readme.write_text(
+        readme.read_text(encoding="utf-8") + "local edit\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ReleaseCheckError, match="clean working tree"):
+        _ = check_release(root)
+
+
+def test_check_release_rejects_untracked_runtime_source(tmp_path: Path) -> None:
+    root = release_root(tmp_path)
+    source = root / "custom_components" / "geofence_journal" / "untracked.py"
+    _ = source.write_text("VALUE = 1\n", encoding="utf-8")
+
+    with pytest.raises(ReleaseCheckError, match="clean working tree"):
+        _ = check_release(root)
+
+
+@pytest.mark.parametrize("filename", [".env", "journal.db"])
+def test_build_release_rejects_unexpected_runtime_file(
+    tmp_path: Path, filename: str
+) -> None:
+    root = release_root(tmp_path)
+    source = root / "custom_components" / "geofence_journal" / filename
+    _ = source.write_text("must not ship\n", encoding="utf-8")
+    output = tmp_path / f"dist-{filename.removeprefix('.')}"
+
+    with pytest.raises(ReleaseCheckError, match="unexpected release source"):
+        _ = build_release(root, output)
+
+    assert not output.exists()
+
+
+def test_check_release_rejects_alpha_version(tmp_path: Path) -> None:
+    root = release_root(tmp_path)
+    for relative in (
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "custom_components/geofence_journal/manifest.json",
+        "custom_components/geofence_journal/const.py",
+    ):
+        path = root / relative
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace("0.1.0", "0.1.0a1"),
+            encoding="utf-8",
+        )
+
+    with pytest.raises(ReleaseCheckError):
+        _ = check_release(root, "v0.1.0a1")

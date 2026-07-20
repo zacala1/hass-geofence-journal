@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from traceback import format_exception
 from typing import TYPE_CHECKING, Final
 from uuid import UUID
 
@@ -206,3 +207,41 @@ async def test_malformed_service_data_never_reaches_backend(
             return_response=True,
         )
     assert backend.tracker_request is None
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_validation_error_does_not_echo_private_service_input(
+    hass: HomeAssistant, hass_admin_user: MockUser
+) -> None:
+    backend = RegistrationBackend()
+    await async_register_services(hass, backend)
+    private_note = "private-home-coordinate-note"
+    private_latitude = 123.456789
+
+    with pytest.raises(ServiceValidationError) as raised:
+        _ = await hass.services.async_call(
+            DOMAIN,
+            "add_event",
+            {
+                "journal_id": str(RESOURCE_ID),
+                "tracker_id": str(RESOURCE_ID),
+                "place_id": str(RESOURCE_ID),
+                "occurred_at": "2026-07-18T12:00:00Z",
+                "latitude": private_latitude,
+                "longitude": 127.0,
+                "note": private_note,
+            },
+            blocking=True,
+            context=Context(user_id=hass_admin_user.id),
+            return_response=True,
+        )
+
+    message = str(raised.value)
+    assert "invalid service data" in message
+    assert private_note not in message
+    assert str(private_latitude) not in message
+    traceback_text = "".join(format_exception(raised.value))
+    assert raised.value.__cause__ is None
+    assert raised.value.__suppress_context__
+    assert private_note not in traceback_text
+    assert str(private_latitude) not in traceback_text

@@ -13,6 +13,60 @@ class ReleaseCheckError(Exception):
 
 
 @final
+class ReleaseRepositoryError(ReleaseCheckError):
+    """Git could not inspect the release repository."""
+
+    @override
+    def __str__(self) -> str:
+        """Render the failed repository inspection."""
+        return "cannot inspect release repository with Git"
+
+
+@final
+class ReleaseDirtyTreeError(ReleaseCheckError):
+    """The repository contains unpublished source changes."""
+
+    @override
+    def __str__(self) -> str:
+        """Render the clean-tree release requirement."""
+        return "release requires a clean working tree"
+
+
+@final
+class ReleaseSymlinkError(ReleaseCheckError):
+    """The integration contains a link outside the release file contract."""
+
+    __slots__ = ("path",)
+
+    def __init__(self, path: Path) -> None:
+        """Store the rejected source path."""
+        super().__init__(path)
+        self.path = path
+
+    @override
+    def __str__(self) -> str:
+        """Render the rejected source path."""
+        return f"release source is a symlink: {self.path}"
+
+
+@final
+class ReleaseUnexpectedSourceError(ReleaseCheckError):
+    """The integration contains a file outside the runtime allowlist."""
+
+    __slots__ = ("path",)
+
+    def __init__(self, path: Path) -> None:
+        """Store the rejected source path."""
+        super().__init__(path)
+        self.path = path
+
+    @override
+    def __str__(self) -> str:
+        """Render the rejected source path."""
+        return f"unexpected release source: {self.path}"
+
+
+@final
 class RepositoryRootError(ReleaseCheckError):
     """The command did not start at the repository root."""
 

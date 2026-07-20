@@ -14,6 +14,11 @@ from custom_components.geofence_journal.storage import (
     SQLiteStore,
     UnsupportedSchemaVersionError,
 )
+from custom_components.geofence_journal.storage.db_types import (
+    required_integer,
+    required_text,
+)
+from custom_components.geofence_journal.storage.errors import StorageClosedError
 
 EXPECTED_TABLES = {
     "schema_version",
@@ -67,6 +72,45 @@ def test_bootstrap_is_idempotent_when_reopened(tmp_path: Path) -> None:
     assert reopened_schema == original_schema
 
 
+def test_open_is_idempotent_on_the_same_store_instance(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "same-instance.db")
+    try:
+        assert store.open() is store
+        assert store.open() is store
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("timeout", [0, -1, 10_001])
+def test_busy_timeout_must_stay_in_the_bounded_range(
+    tmp_path: Path, timeout: int
+) -> None:
+    with pytest.raises(DatabaseSchemaError, match="busy timeout"):
+        _ = SQLiteStore(tmp_path / "invalid-timeout.db", busy_timeout_ms=timeout)
+
+
+def test_closed_store_operations_raise_a_stable_error(tmp_path: Path) -> None:
+    store = SQLiteStore(tmp_path / "closed.db")
+
+    with pytest.raises(StorageClosedError) as raised:
+        _ = store.diagnostics()
+
+    assert str(raised.value) == "storage is closed or closing"
+
+
+def test_injected_storage_fault_reports_its_stage() -> None:
+    error = InjectedStorageFaultError("after-schema")
+
+    assert str(error) == "injected storage fault at after-schema"
+
+
+def test_sqlite_scalar_boundaries_reject_wrong_storage_classes() -> None:
+    with pytest.raises(DatabaseSchemaError, match="field must be TEXT"):
+        _ = required_text(1, field="field")
+    with pytest.raises(DatabaseSchemaError, match="field must be INTEGER"):
+        _ = required_integer("1", field="field")
+
+
 def test_future_schema_fails_without_mutation(tmp_path: Path) -> None:
     # Given
     database_path = tmp_path / "future.db"
@@ -84,6 +128,27 @@ def test_future_schema_fails_without_mutation(tmp_path: Path) -> None:
 
     # Then
     assert database_path.read_bytes() == before
+
+
+def test_old_schema_version_is_rejected_explicitly(tmp_path: Path) -> None:
+    database_path = tmp_path / "old.db"
+    with closing(sqlite3.connect(database_path)) as connection:
+        _ = connection.execute("CREATE TABLE schema_version(version INTEGER NOT NULL)")
+        _ = connection.execute("INSERT INTO schema_version VALUES (0)")
+        connection.commit()
+
+    with pytest.raises(DatabaseSchemaError, match="unsupported old schema 0"):
+        _ = SQLiteStore(database_path).open()
+
+
+def test_missing_schema_version_row_is_rejected_by_diagnostics(tmp_path: Path) -> None:
+    with SQLiteStore(tmp_path / "missing-version-row.db") as store:
+        _ = store.run_operation(
+            lambda connection: connection.execute("DELETE FROM schema_version")
+        )
+
+        with pytest.raises(DatabaseSchemaError, match="missing schema version row"):
+            _ = store.diagnostics()
 
 
 def test_malformed_existing_schema_fails_without_mutation(tmp_path: Path) -> None:

@@ -2,8 +2,11 @@
 
 Geofence Journal is a local Home Assistant custom integration that records
 confirmed geofence enter and exit events from `person` and `device_tracker`
-coordinates. Version 0.1.0 focuses on deterministic location decisions,
+coordinates. Version 0.1.0b1 is a user-test beta focused on deterministic location decisions,
 restart recovery, and explicit data lifecycle controls.
+
+This build is a GitHub prerelease. Stable `v0.1.0` has not been published and
+will be created only after beta feedback and a fresh validation run.
 
 ## Requirements
 
@@ -20,15 +23,18 @@ configuration.
 
 1. In HACS, open **Custom repositories**.
 2. Add `https://github.com/zacala1/hass-geofence-journal` as an **Integration**.
-3. Download **Geofence Journal**, restart Home Assistant, and clear the browser
+3. Enable the repository's **HACS prerelease** switch so HACS can offer beta
+   versions, then select `v0.1.0b1`.
+4. Download **Geofence Journal**, restart Home Assistant, and clear the browser
    cache if Home Assistant does not immediately discover the integration.
 
 ### Manual installation
 
-1. Download the release ZIP and extract it at the Home Assistant configuration
-   root, or copy `custom_components/geofence_journal` into the
-   `custom_components` directory under that root.
-2. Restart Home Assistant.
+1. Download `geofence_journal.zip` from the `v0.1.0b1` GitHub prerelease.
+2. Create `custom_components/geofence_journal` below the Home Assistant
+   configuration directory and extract the ZIP contents directly into that
+   directory. The ZIP itself is rooted at the integration contents.
+3. Restart Home Assistant.
 
 For either method, go to **Settings > Devices & services > Add integration** and
 select **Geofence Journal**. The config flow creates the sole config entry and
@@ -45,14 +51,13 @@ or CI runtime declarations disagree:
 ```bash
 uv sync --all-groups --frozen
 uv run python -m scripts.release check
-uv run python -m scripts.release check v0.1.0
+uv run python -m scripts.release check v0.1.0b1
 uv run python -m scripts.release build dist
 ```
 
-The build command creates a deterministic manual-install archive at
-`dist/hass-geofence-journal-v0.1.0.zip`. Its paths begin with
-`custom_components/geofence_journal`, so extract it at the Home Assistant
-configuration root.
+The build command creates the deterministic HACS/manual-install archive
+`dist/geofence_journal.zip`. Its root contains `manifest.json`, Python modules,
+and translations, so extract it into `custom_components/geofence_journal`.
 
 Before installing or upgrading, verify all of the following:
 
@@ -67,15 +72,16 @@ Before installing or upgrading, verify all of the following:
    preserved database copies are removed.
 
 Maintainers publish only a tag matching the manifest version exactly, such as
-`v0.1.0`. A matching tag runs the locked Linux/Python environment check, root
+`v0.1.0b1`. A matching tag runs the locked Linux/Python environment check, root
 and version contract, Ruff, BasedPyright, pytest with at least 95% coverage,
 HACS, Hassfest, and deterministic ZIP generation before GitHub Release
-publication. A manual workflow run performs all verification and packaging but
-never publishes a release.
+publication. Beta and release-candidate tags are marked as GitHub prereleases
+and never as Latest. A manual workflow run performs all verification and
+packaging but never publishes a release.
 
 ## Administrator setup
 
-Version 0.1.0 has no resource-management frontend. An administrator configures
+Version 0.1.0b1 has no resource-management frontend. An administrator configures
 resources in **Developer Tools > Actions** (formerly Services), in this order:
 
 1. `geofence_journal.upsert_tracker` for a `person` or `device_tracker` entity.
@@ -148,20 +154,29 @@ DELETE ALL GEOFENCE JOURNAL DATA
 
 Destructive actions make no automatic backup. Export the affected journal and
 create a Home Assistant backup first. Verify that the backup contains the Home
-Assistant configuration directory before purging or resetting data.
+Assistant configuration directory before purging or resetting data. These
+actions create no automatic backup of their own.
 
 ## Backup and restore
 
 Use a Home Assistant backup as the primary whole-database recovery point and a
-CSV export as a portable, human-readable record. Stop Home Assistant before
-copying or replacing the live SQLite database so that the database, WAL, and
-shared-memory state cannot be captured inconsistently.
+CSV export as a portable, human-readable record. Before a Home Assistant backup,
+the integration pauses observations, drains accepted writes, and closes SQLite;
+afterward it reopens the database and restores the listener generation. The
+default database is below the Home Assistant configuration directory and is
+therefore included in the standard configuration backup.
+
+An absolute database path outside the Home Assistant configuration directory is
+not included in the standard Home Assistant backup archive. Back it up and
+restore it separately, with Home Assistant stopped. Also stop Home Assistant
+before manually copying or replacing any live SQLite database so the database,
+WAL, and shared-memory state cannot be captured inconsistently.
 
 To restore, stop Home Assistant, preserve the current database files separately,
 restore a backup made by a compatible integration version, and start Home
 Assistant. Confirm integration health and the last-event sensor before deleting
 the preserved copy. CSV is an export format, not an import or database restore
-format in v0.1.0.
+format in v0.1.0b1.
 
 ## Troubleshooting
 
@@ -187,7 +202,7 @@ Issues are tracked at
 ## Deferred features
 
 A management UI, map picker, custom panel or card, event editor, stay/commute
-analysis, and monthly statistics are intentionally deferred beyond v0.1.0.
+analysis, and monthly statistics are intentionally deferred beyond stable v0.1.0.
 
 ## License
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import subprocess
+from shutil import which
 from typing import TYPE_CHECKING
 from zipfile import ZipFile
 
@@ -15,13 +18,34 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _run_git(root: Path, *arguments: str) -> None:
+    git = which("git")
+    assert git is not None
+    _ = subprocess.run(  # noqa: S603
+        (git, *arguments),
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
+def commit_release_root(root: Path, message: str = "fixture") -> None:
+    _run_git(root, "add", "--all")
+    _run_git(root, "commit", "--quiet", "--message", message)
+
+
 def release_root(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     integration = root / "custom_components" / "geofence_journal"
     translations = integration / "translations"
     translations.mkdir(parents=True)
-    (root / ".git").mkdir()
     (root / ".github" / "workflows").mkdir(parents=True)
+    _ = (root / ".gitignore").write_text(
+        "__pycache__/\n*.py[cod]\ndist/\npackages/\n",
+        encoding="utf-8",
+    )
     _ = (root / "pyproject.toml").write_text(
         """[project]
 name = "hass-geofence-journal"
@@ -47,7 +71,16 @@ requires-dist = [
         encoding="utf-8",
     )
     _ = (root / "hacs.json").write_text(
-        '{"name":"Geofence Journal","homeassistant":"2026.7.0"}',
+        json.dumps(
+            {
+                "name": "Geofence Journal",
+                "homeassistant": "2026.7.0",
+                "zip_release": True,
+                "filename": "geofence_journal.zip",
+                "hide_default_branch": True,
+            },
+            separators=(",", ":"),
+        ),
         encoding="utf-8",
     )
     _ = (root / "README.md").write_text(
@@ -66,6 +99,7 @@ requires-dist = [
     )
     for relative in (
         "__init__.py",
+        "backup.py",
         "config_flow.py",
         "services.yaml",
         "sensor.py",
@@ -74,6 +108,10 @@ requires-dist = [
         "translations/ko.json",
     ):
         _ = (integration / relative).write_text("{}\n", encoding="utf-8")
+    _run_git(root, "init", "--quiet")
+    _run_git(root, "config", "user.name", "Release Fixture")
+    _run_git(root, "config", "user.email", "release@example.invalid")
+    commit_release_root(root)
     return root
 
 
@@ -89,6 +127,29 @@ def test_check_release_accepts_consistent_root(tmp_path: Path) -> None:
     assert contract.domain == "geofence_journal"
     assert contract.minimum_home_assistant == "2026.7.0"
     assert contract.python_requirement == ">=3.14.2,<3.15"
+    assert contract.prerelease is False
+
+
+def test_check_release_accepts_pep440_beta_and_exact_tag(tmp_path: Path) -> None:
+    root = release_root(tmp_path)
+    for relative in (
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "custom_components/geofence_journal/manifest.json",
+        "custom_components/geofence_journal/const.py",
+    ):
+        path = root / relative
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace("0.1.0", "0.1.0b1"),
+            encoding="utf-8",
+        )
+    commit_release_root(root, "beta fixture")
+
+    contract = check_release(root, "v0.1.0b1")
+
+    assert contract.version == "0.1.0b1"
+    assert contract.prerelease is True
 
 
 def test_check_release_rejects_manifest_version_drift(tmp_path: Path) -> None:
@@ -146,14 +207,18 @@ def test_build_release_creates_reproducible_install_tree(tmp_path: Path) -> None
     second = build_release(root, tmp_path / "second")
 
     # Then
-    assert first.name == "hass-geofence-journal-v0.1.0.zip"
+    assert first.name == "geofence_journal.zip"
     assert first.read_bytes() == second.read_bytes()
     with ZipFile(first) as archive:
         names = set(archive.namelist())
-    assert "custom_components/geofence_journal/manifest.json" in names
-    assert "custom_components/geofence_journal/translations/ko.json" in names
-    assert all(name.startswith("custom_components/geofence_journal/") for name in names)
+        members = archive.infolist()
+    assert "manifest.json" in names
+    assert "backup.py" in names
+    assert "translations/ko.json" in names
+    assert all(not name.startswith("custom_components/") for name in names)
     assert all("__pycache__" not in name for name in names)
+    assert all(member.create_system == 3 for member in members)
+    assert all(member.external_attr >> 16 == 0o100644 for member in members)
 
 
 def test_cli_check_reports_deployment_contract(
@@ -182,10 +247,34 @@ def test_cli_build_uses_requested_output_directory(
     exit_code = run_cli(("build", "packages"), root)
 
     # Then
-    artifact = root / "packages" / "hass-geofence-journal-v0.1.0.zip"
+    artifact = root / "packages" / "geofence_journal.zip"
     assert exit_code == 0
     assert artifact.is_file()
     assert capsys.readouterr().out == f"release-artifact {artifact.resolve()}\n"
+
+
+def test_cli_classify_outputs_github_prerelease_value(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = release_root(tmp_path)
+    for relative in (
+        "pyproject.toml",
+        "uv.lock",
+        "README.md",
+        "custom_components/geofence_journal/manifest.json",
+        "custom_components/geofence_journal/const.py",
+    ):
+        path = root / relative
+        _ = path.write_text(
+            path.read_text(encoding="utf-8").replace("0.1.0", "0.1.0b1"),
+            encoding="utf-8",
+        )
+    commit_release_root(root, "beta fixture")
+
+    exit_code = run_cli(("classify", "v0.1.0b1"), root)
+
+    assert exit_code == 0
+    assert capsys.readouterr().out == "prerelease=true\n"
 
 
 def test_cli_rejects_unknown_command(

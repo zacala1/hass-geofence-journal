@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -16,11 +16,16 @@ concurrency:
 jobs:
   verify:
     name: Verify and package
+    outputs:
+      prerelease: ${{ steps.release_metadata.outputs.prerelease }}
+      sha256: ${{ steps.archive_digest.outputs.sha256 }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -40,6 +45,13 @@ jobs:
         if: github.ref_type != 'tag'
         run: uv run python -m scripts.release check
 
+      - name: Classify release
+        if: github.ref_type == 'tag'
+        id: release_metadata
+        run: >-
+          uv run python -m scripts.release classify "${GITHUB_REF_NAME}"
+          >> "${GITHUB_OUTPUT}"
+
       - name: Ruff lint
         run: uv run ruff check .
 
@@ -52,16 +64,42 @@ jobs:
       - name: Pytest with coverage
         run: >-
           uv run pytest --cov=custom_components.geofence_journal
-          --cov-fail-under=95 -q
+          --cov-branch --cov-fail-under=95 -q
 
       - name: Build deterministic release archive
         run: uv run python -m scripts.release build dist
+
+      - name: Record release archive digest
+        id: archive_digest
+        run: >-
+          echo "sha256=$(sha256sum dist/geofence_journal.zip | cut -d ' ' -f 1)"
+          >> "${GITHUB_OUTPUT}"
+
+      - name: Smoke-test clean archive on minimum Home Assistant
+        run: |
+          smoke_root="${RUNNER_TEMP}/geofence-journal-artifact-smoke"
+          mkdir -p "${smoke_root}/custom_components/geofence_journal"
+          python -m zipfile -e dist/geofence_journal.zip \
+            "${smoke_root}/custom_components/geofence_journal"
+          cp tests/conftest.py tests/test_release_artifact_smoke.py "${smoke_root}/"
+          python -c \
+            "import json, pathlib; print(*json.loads(pathlib.Path('custom_components/geofence_journal/manifest.json').read_text(encoding='utf-8'))['requirements'], sep='\n')" \
+            > "${smoke_root}/manifest-requirements.txt"
+          cd "${smoke_root}"
+          EXPECTED_INTEGRATION_ROOT="${smoke_root}" PYTHONPATH="${smoke_root}" \
+            uv run --isolated --no-project --python 3.14.2 \
+            --with "homeassistant==2026.7.0" \
+            --with "pytest==9.0.3" \
+            --with "pytest-homeassistant-custom-component==0.13.344" \
+            --with-requirements "${smoke_root}/manifest-requirements.txt" \
+            python -m pytest test_release_artifact_smoke.py -q \
+            -o asyncio_mode=auto
 
       - name: Upload verified release archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: geofence-journal-release
-          path: dist/*.zip
+          path: dist/geofence_journal.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -72,6 +110,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: HACS validation
         uses: docker://ghcr.io/hacs/action@sha256:3b5eaf821de267ede11dfdd3a792679dfdc72f52bdaf395422b39f0cfad27120
@@ -89,6 +129,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Hassfest validation
         run: >-
@@ -118,6 +160,46 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip
-          --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            gh release create "${GITHUB_REF_NAME}" dist/geofence_journal.zip \
+              --verify-tag --generate-notes --title "${GITHUB_REF_NAME}" \
+              --prerelease
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/geofence_journal.zip \
+              --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          fi
+
+      - name: Verify published release metadata and digest
+        env:
+          EXPECTED_PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+          EXPECTED_SHA256: ${{ needs.verify.outputs.sha256 }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          actual_prerelease="$(gh release view "${GITHUB_REF_NAME}" \
+            --json isPrerelease --jq '.isPrerelease')"
+          asset_count="$(gh release view "${GITHUB_REF_NAME}" \
+            --json assets --jq '.assets | length')"
+          asset_name="$(gh release view "${GITHUB_REF_NAME}" \
+            --json assets --jq '.assets[0].name')"
+          test "${actual_prerelease}" = "${EXPECTED_PRERELEASE}"
+          if [[ "${EXPECTED_PRERELEASE}" == "true" ]]; then
+            repository_owner="${GH_REPO%%/*}"
+            repository_name="${GH_REPO#*/}"
+            latest_tag="$(gh api graphql \
+              -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){latestRelease{tagName}}}' \
+              -F owner="${repository_owner}" -F name="${repository_name}" \
+              --jq '.data.repository.latestRelease.tagName // ""')"
+            test "${latest_tag}" != "${GITHUB_REF_NAME}"
+          fi
+          test "${asset_count}" = "1"
+          test "${asset_name}" = "geofence_journal.zip"
+          verify_root="${RUNNER_TEMP}/published-release"
+          mkdir -p "${verify_root}"
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern geofence_journal.zip --dir "${verify_root}"
+          actual_sha256="$(sha256sum "${verify_root}/geofence_journal.zip" \
+            | cut -d ' ' -f 1)"
+          test "${actual_sha256}" = "${EXPECTED_SHA256}"

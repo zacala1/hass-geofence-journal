@@ -87,6 +87,26 @@ def delete_runtime_state(connection: SQLConnection, rule_id: str) -> None:
     connection.commit()
 
 
+def delete_inactive_runtime_states(connection: SQLConnection) -> None:
+    """Delete recovery rows whose complete resource linkage is inactive."""
+    _ = connection.execute("BEGIN IMMEDIATE")
+    try:
+        _ = connection.execute(
+            """DELETE FROM runtime_states
+            WHERE rule_id NOT IN (
+                SELECT r.id FROM recording_rules r
+                JOIN trackers t ON t.id=r.tracker_id
+                JOIN places p ON p.id=r.place_id
+                JOIN journals j ON j.id=r.journal_id
+                WHERE r.enabled=1 AND t.enabled=1 AND p.enabled=1 AND j.enabled=1
+            )"""
+        )
+    except sqlite3.Error:
+        connection.rollback()
+        raise
+    connection.commit()
+
+
 def write_runtime_state_row(
     connection: SQLConnection, state: RuntimeStateRecord
 ) -> None:

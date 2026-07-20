@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final, final
 
 import pytest
 from custom_components.geofence_journal import http
-from custom_components.geofence_journal.export import ExportRegistry
+from custom_components.geofence_journal.export import ExportDownload, ExportRegistry
 from custom_components.geofence_journal.http import (
     async_cleanup_orphaned_exports,
     async_register_export_view,
@@ -132,6 +132,65 @@ async def test_export_download_requires_admin(
 
     # Then: authentication alone does not cross the admin boundary.
     assert response.status == HTTPStatus.UNAUTHORIZED
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_export_download_rejects_symlinked_artifact(
+    hass: HomeAssistant,
+    hass_client: _ClientSessionGenerator,
+    tmp_path: Path,
+) -> None:
+    registry = ExportRegistry(tmp_path / "exports", HttpClock())
+    artifact = registry.allocate()
+    secret = tmp_path / "private.txt"
+    _ = secret.write_bytes(b"must-not-be-served")
+    artifact.path.symlink_to(secret)
+    await _register_view(hass, registry)
+    admin = await hass_client()
+
+    response = await admin.get(artifact.url)
+
+    assert response.status == HTTPStatus.NOT_FOUND
+    assert secret.read_bytes() == b"must-not-be-served"
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_export_download_streams_verified_file_after_path_swap(
+    hass: HomeAssistant,
+    hass_client: _ClientSessionGenerator,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = ExportRegistry(tmp_path / "exports", HttpClock())
+    artifact = registry.allocate()
+    expected = b"verified-export"
+    _ = artifact.path.write_bytes(expected)
+    secret = tmp_path / "private.txt"
+    _ = secret.write_bytes(b"must-not-be-served")
+    original_open = ExportRegistry.open_download
+
+    def swap_path_after_open(
+        self: ExportRegistry, export_id: str
+    ) -> ExportDownload | None:
+        download = original_open(self, export_id)
+        assert download is not None
+        try:
+            artifact.path.unlink()
+            artifact.path.symlink_to(secret)
+        except OSError as error:
+            download.stream.close()
+            pytest.skip(f"platform cannot replace an open export path: {error}")
+        return download
+
+    monkeypatch.setattr(ExportRegistry, "open_download", swap_path_after_open)
+    await _register_view(hass, registry)
+    admin = await hass_client()
+
+    response = await admin.get(artifact.url)
+
+    assert response.status == HTTPStatus.OK
+    assert await response.read() == expected
+    assert secret.read_bytes() == b"must-not-be-served"
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
