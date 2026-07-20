@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CONST_VERSION_PATTERN = re.compile(
-    r'^VERSION: Final = "(?P<value>\d+\.\d+\.\d+(?:(?:a|b|rc)[1-9]\d*)?)"$',
+    r'^VERSION: Final = "(?P<value>\d+\.\d+\.\d+(?:(?:b|rc)[1-9]\d*)?)"$',
     re.MULTILINE,
 )
 LOCKFILE_PROJECT_PACKAGE_FIELD: Final = "lockfile project package"

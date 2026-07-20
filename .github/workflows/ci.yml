@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -20,6 +22,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Install uv and Python
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -44,3 +48,46 @@ jobs:
         run: >-
           uv run pytest --cov=custom_components.geofence_journal
           --cov-branch --cov-fail-under=95 -q
+
+  compatibility:
+    name: HA compatibility (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: minimum 2026.7.0
+            home_assistant: "homeassistant==2026.7.0"
+            pytest_ha: "pytest-homeassistant-custom-component==0.13.344"
+          - name: latest 2026.7.x
+            home_assistant: "homeassistant>=2026.7,<2026.8"
+            pytest_ha: "pytest-homeassistant-custom-component==0.13.346"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: "3.14.2"
+          enable-cache: true
+
+      - name: Read manifest runtime requirements
+        run: >-
+          python -c
+          "import json, pathlib;
+          print(*json.loads(pathlib.Path('custom_components/geofence_journal/manifest.json')
+          .read_text(encoding='utf-8'))['requirements'], sep='\n')"
+          > "${RUNNER_TEMP}/manifest-requirements.txt"
+
+      - name: Smoke-test setup, reload, SQLite, and unload
+        run: >-
+          uv run --isolated --no-project --python 3.14.2
+          --with "${{ matrix.home_assistant }}"
+          --with "pytest==9.0.3"
+          --with "${{ matrix.pytest_ha }}"
+          --with-requirements "${RUNNER_TEMP}/manifest-requirements.txt"
+          python -m pytest tests/test_release_artifact_smoke.py -q

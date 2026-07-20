@@ -11,6 +11,7 @@ This is an original first-party Home Assistant custom integration. Do not introd
 - Follow PEP 440. Preview versions use `X.Y.ZbN`; use `X.Y.ZrcN` only after feature completion. Tags are immutable and exactly `v<manifest-version>`.
 - Keep `pyproject.toml`, `uv.lock`, `manifest.json`, `const.py`, README, release checks, archive name, and GitHub tag synchronized.
 - Declare and exactly pin every external runtime requirement in `manifest.json`; prove the release zip works in a clean HA environment.
+- Match the archive layout to the verified HACS extraction contract. With the standard `zip_release` flow, place integration runtime contents at the ZIP root because HACS extracts them into `custom_components/<domain>`.
 - Keep Config Entry setup, generation refresh, unload, maintenance, SQLite, and backup lifecycles atomic and rollback-safe. Blocking I/O stays off the event loop.
 - Preserve privacy defaults: coordinates are not stored unless enabled and never appear on the HA event bus. Purge/reset remain administrator-only and explicitly confirmed.
 - Run Ruff, Ruff format, BasedPyright, pytest with branch coverage at least 95%, HACS, Hassfest, deterministic archive checks, and minimum/latest HA smoke tests before release.

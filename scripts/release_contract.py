@@ -14,6 +14,8 @@ from scripts.release_errors import (
     RepositoryRootError,
 )
 from scripts.release_metadata import ReleaseMetadata, load_release_metadata
+from scripts.release_repository import validate_clean_worktree
+from scripts.release_sources import validated_release_sources
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -28,7 +30,7 @@ MINIMUM_HOME_ASSISTANT: Final = "2026.7.0"
 MINIMUM_PYTHON: Final = (3, 14, 2)
 MAXIMUM_PYTHON: Final = (3, 15)
 VERSION_PATTERN: Final = re.compile(
-    r"(?P<release>\d+\.\d+\.\d+)(?:(?P<phase>a|b|rc)(?P<number>[1-9]\d*))?"
+    r"(?P<release>\d+\.\d+\.\d+)(?:(?P<phase>b|rc)(?P<number>[1-9]\d*))?"
 )
 RELEASE_FILENAME: Final = "geofence_journal.zip"
 REQUIRED_INTEGRATION_FILES: Final = (
@@ -82,7 +84,10 @@ def check_release(root: Path, expected_tag: str | None = None) -> ReleaseContrac
     version, prerelease = _validate_identity(metadata)
     _validate_environment(metadata, version)
     _validate_tag(version, expected_tag)
-    _validate_integration_files(metadata.manifest_path.parent)
+    integration = metadata.manifest_path.parent
+    _validate_integration_files(integration)
+    _ = validated_release_sources(resolved, integration)
+    validate_clean_worktree(resolved)
     return ReleaseContract(
         root=resolved,
         version=version,

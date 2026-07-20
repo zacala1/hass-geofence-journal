@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+from shutil import which
 from typing import TYPE_CHECKING
 from zipfile import ZipFile
 
@@ -16,13 +18,34 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def _run_git(root: Path, *arguments: str) -> None:
+    git = which("git")
+    assert git is not None
+    _ = subprocess.run(  # noqa: S603
+        (git, *arguments),
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
+def commit_release_root(root: Path, message: str = "fixture") -> None:
+    _run_git(root, "add", "--all")
+    _run_git(root, "commit", "--quiet", "--message", message)
+
+
 def release_root(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     integration = root / "custom_components" / "geofence_journal"
     translations = integration / "translations"
     translations.mkdir(parents=True)
-    (root / ".git").mkdir()
     (root / ".github" / "workflows").mkdir(parents=True)
+    _ = (root / ".gitignore").write_text(
+        "__pycache__/\n*.py[cod]\ndist/\npackages/\n",
+        encoding="utf-8",
+    )
     _ = (root / "pyproject.toml").write_text(
         """[project]
 name = "hass-geofence-journal"
@@ -85,6 +108,10 @@ requires-dist = [
         "translations/ko.json",
     ):
         _ = (integration / relative).write_text("{}\n", encoding="utf-8")
+    _run_git(root, "init", "--quiet")
+    _run_git(root, "config", "user.name", "Release Fixture")
+    _run_git(root, "config", "user.email", "release@example.invalid")
+    commit_release_root(root)
     return root
 
 
@@ -117,6 +144,7 @@ def test_check_release_accepts_pep440_beta_and_exact_tag(tmp_path: Path) -> None
             path.read_text(encoding="utf-8").replace("0.1.0", "0.1.0b1"),
             encoding="utf-8",
         )
+    commit_release_root(root, "beta fixture")
 
     contract = check_release(root, "v0.1.0b1")
 
@@ -183,11 +211,14 @@ def test_build_release_creates_reproducible_install_tree(tmp_path: Path) -> None
     assert first.read_bytes() == second.read_bytes()
     with ZipFile(first) as archive:
         names = set(archive.namelist())
+        members = archive.infolist()
     assert "manifest.json" in names
     assert "backup.py" in names
     assert "translations/ko.json" in names
     assert all(not name.startswith("custom_components/") for name in names)
     assert all("__pycache__" not in name for name in names)
+    assert all(member.create_system == 3 for member in members)
+    assert all(member.external_attr >> 16 == 0o100644 for member in members)
 
 
 def test_cli_check_reports_deployment_contract(
@@ -238,6 +269,7 @@ def test_cli_classify_outputs_github_prerelease_value(
             path.read_text(encoding="utf-8").replace("0.1.0", "0.1.0b1"),
             encoding="utf-8",
         )
+    commit_release_root(root, "beta fixture")
 
     exit_code = run_cli(("classify", "v0.1.0b1"), root)
 
