@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 from datetime import UTC, datetime
+from threading import Barrier
 from typing import TYPE_CHECKING
 
 import anyio
@@ -33,6 +36,9 @@ from custom_components.geofence_journal.storage import (
     ConfirmedTransition,
     InjectedStorageFaultError,
     SQLiteStore,
+)
+from custom_components.geofence_journal.storage.transitions import (
+    confirm_transition as persist_transition,
 )
 
 NOW = datetime(2026, 7, 18, 12, tzinfo=UTC)
@@ -79,9 +85,9 @@ def _seed(store: SQLiteStore) -> None:
     store.upsert_rule(resources.rule, NOW)
 
 
-def _transition() -> ConfirmedTransition:
+def _transition(event_id: str = "event-1") -> ConfirmedTransition:
     return ConfirmedTransition(
-        event_id="event-1",
+        event_id=event_id,
         rule_id="rule-1",
         tracker_id="tracker-1",
         place_id="place-1",
@@ -160,6 +166,57 @@ def test_duplicate_transition_returns_existing_event(tmp_path: Path) -> None:
         assert duplicate.created is False
         assert duplicate.event_id == "event-1"
         assert store.event_count() == 1
+
+
+def test_concurrent_duplicate_transition_returns_the_committed_event(
+    tmp_path: Path,
+) -> None:
+    # Given: two independent WAL connections start the same write concurrently.
+    database_path = tmp_path / "concurrent-duplicate.db"
+    with SQLiteStore(database_path) as store:
+        _seed(store)
+    begin_barrier = Barrier(2)
+
+    def connect() -> sqlite3.Connection:
+        connection = sqlite3.connect(
+            database_path,
+            timeout=5,
+            isolation_level=None,
+            check_same_thread=False,
+        )
+        _ = connection.execute("PRAGMA foreign_keys=ON")
+        _ = connection.execute("PRAGMA journal_mode=WAL")
+        _ = connection.execute("PRAGMA busy_timeout=5000")
+
+        def synchronize_begin(statement: str) -> None:
+            if statement == "BEGIN IMMEDIATE":
+                _ = begin_barrier.wait(timeout=5)
+
+        connection.set_trace_callback(synchronize_begin)
+        return connection
+
+    with (
+        closing(connect()) as first_connection,
+        closing(connect()) as second_connection,
+        ThreadPoolExecutor(max_workers=2) as executor,
+    ):
+        # When: both connections confirm one durable transition identity.
+        first_future = executor.submit(
+            persist_transition, first_connection, _transition("event-first")
+        )
+        second_future = executor.submit(
+            persist_transition, second_connection, _transition("event-second")
+        )
+        results = (first_future.result(), second_future.result())
+
+    # Then: one writer creates the event and the other observes that same commit.
+    assert {result.created for result in results} == {False, True}
+    assert len({result.event_id for result in results}) == 1
+    with SQLiteStore(database_path) as reopened:
+        assert reopened.event_count() == 1
+        runtime = reopened.runtime_state("rule-1")
+        assert runtime is not None
+        assert runtime.last_event_id == results[0].event_id
 
 
 @pytest.mark.asyncio

@@ -5,6 +5,7 @@ from pydantic import TypeAdapter
 
 ROOT: Final = Path(__file__).parents[1]
 REPOSITORY_URL: Final = "https://github.com/zacala1/hass-geofence-journal"
+PYDANTIC_REQUIREMENT: Final = "pydantic==2.13.4"
 
 
 class ReleaseManifest(TypedDict):
@@ -28,14 +29,18 @@ class HacsMetadata(TypedDict):
     homeassistant: str
 
 
-def test_manifest_describes_the_custom_integration_release() -> None:
-    # Given: the integration manifest at the HACS package boundary.
-    manifest = TypeAdapter(ReleaseManifest).validate_json(
+def _manifest() -> ReleaseManifest:
+    return TypeAdapter(ReleaseManifest).validate_json(
         (ROOT / "custom_components" / "geofence_journal" / "manifest.json").read_text(
             "utf-8"
         ),
         extra="forbid",
     )
+
+
+def test_manifest_describes_the_custom_integration_release() -> None:
+    # Given: the integration manifest at the HACS package boundary.
+    manifest = _manifest()
 
     # When: release identity and behavior metadata are read.
     release_contract = (
@@ -60,7 +65,17 @@ def test_manifest_describes_the_custom_integration_release() -> None:
     assert manifest["config_flow"] is True
     assert manifest["single_config_entry"] is True
     assert manifest["dependencies"] == ["http"]
-    assert manifest["requirements"] == []
+
+
+def test_manifest_installs_pydantic_for_a_clean_home_assistant() -> None:
+    # Given: runtime modules import Pydantic before config-entry setup can run.
+    manifest = _manifest()
+
+    # When: Home Assistant resolves the integration's external requirements.
+    requirements = manifest["requirements"]
+
+    # Then: the tested runtime version is installed on a clean HA environment.
+    assert requirements == [PYDANTIC_REQUIREMENT]
 
 
 def test_hacs_metadata_targets_the_supported_home_assistant_release() -> None:

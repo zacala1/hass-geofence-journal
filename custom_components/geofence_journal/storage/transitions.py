@@ -6,7 +6,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 from .db_types import required_integer, required_text
-from .errors import InjectedStorageFaultError
+from .errors import InjectedStorageFaultError, StorageError
 from .records import (
     ConfirmedTransition,
     TransitionResult,
@@ -28,18 +28,20 @@ def confirm_transition(
     occurred_at = utc_text(transition.occurred_at)
     confirmed_at = utc_text(transition.confirmed_at)
     deadline = utc_text(transition.confirmed_deadline)
-    existing = connection.execute(
-        """SELECT id FROM location_events
-        WHERE rule_id=? AND transition_generation=? AND confirmed_deadline=?""",
-        (transition.rule_id, transition.generation, deadline),
-    ).fetchone()
-    if existing is not None:
-        return TransitionResult(
-            event_id=required_text(existing[0], field="location_events.id"),
-            created=False,
-        )
     _ = connection.execute("BEGIN IMMEDIATE")
     try:
+        existing = connection.execute(
+            """SELECT id FROM location_events
+            WHERE rule_id=? AND transition_generation=? AND confirmed_deadline=?""",
+            (transition.rule_id, transition.generation, deadline),
+        ).fetchone()
+        if existing is not None:
+            event_id = required_text(existing[0], field="location_events.id")
+            connection.commit()
+            return TransitionResult(
+                event_id=event_id,
+                created=False,
+            )
         _ = connection.execute(
             """INSERT INTO location_events
             (id,journal_id,rule_id,tracker_id,place_id,event_type,occurred_at,
@@ -99,7 +101,7 @@ def confirm_transition(
             )
         else:
             write_runtime_state_row(connection, runtime)
-    except InjectedStorageFaultError, sqlite3.Error:
+    except sqlite3.Error, StorageError:
         connection.rollback()
         raise
     connection.commit()
