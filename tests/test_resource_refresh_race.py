@@ -89,6 +89,17 @@ def _seed_coordinate_rule(path: Path) -> None:
         )
 
 
+def _settings(path: Path) -> Settings:
+    return Settings(
+        store_coordinates=False,
+        enter_confirmation_seconds=Seconds(0),
+        exit_confirmation_seconds=Seconds(0),
+        cooldown_seconds=Seconds(0),
+        exit_margin_meters=Meters(50),
+        database_path=str(path),
+    )
+
+
 @final
 class MoveDuringResumeCoordinator:
     """Inject a tracker update after the write but before listener rebuilding."""
@@ -126,14 +137,7 @@ async def test_resource_write_and_listener_rebuild_share_one_pause_scope(
         "away",
         {ATTR_LATITUDE: 0.01, ATTR_LONGITUDE: 0.0, ATTR_GPS_ACCURACY: 5},
     )
-    settings = Settings(
-        store_coordinates=False,
-        enter_confirmation_seconds=Seconds(0),
-        exit_confirmation_seconds=Seconds(0),
-        cooldown_seconds=Seconds(0),
-        exit_margin_meters=Meters(50),
-        database_path=str(path),
-    )
+    settings = _settings(path)
     manager = GeofenceJournalManager(hass, settings)
     await manager.async_start()
     coordinator = MoveDuringResumeCoordinator(manager, hass)
@@ -180,14 +184,7 @@ async def test_service_disable_deactivates_removed_rule_runtime_state(
         "away",
         {ATTR_LATITUDE: 0.01, ATTR_LONGITUDE: 0.0, ATTR_GPS_ACCURACY: 5},
     )
-    settings = Settings(
-        store_coordinates=False,
-        enter_confirmation_seconds=Seconds(0),
-        exit_confirmation_seconds=Seconds(0),
-        cooldown_seconds=Seconds(0),
-        exit_margin_meters=Meters(50),
-        database_path=str(path),
-    )
+    settings = _settings(path)
     manager = GeofenceJournalManager(hass, settings)
     await manager.async_start()
     backend = SQLiteManagementBackend(
@@ -231,14 +228,7 @@ async def test_failed_service_disable_cleanup_is_retried(
         "away",
         {ATTR_LATITUDE: 0.01, ATTR_LONGITUDE: 0.0, ATTR_GPS_ACCURACY: 5},
     )
-    settings = Settings(
-        store_coordinates=False,
-        enter_confirmation_seconds=Seconds(0),
-        exit_confirmation_seconds=Seconds(0),
-        cooldown_seconds=Seconds(0),
-        exit_margin_meters=Meters(50),
-        database_path=str(path),
-    )
+    settings = _settings(path)
     manager = GeofenceJournalManager(hass, settings)
     await manager.async_start()
     backend = SQLiteManagementBackend(
