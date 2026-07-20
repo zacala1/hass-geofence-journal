@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -12,8 +13,13 @@ from custom_components.geofence_journal.storage import SQLiteStore
 from custom_components.geofence_journal.storage.errors import (
     StorageClosedError,
 )
+from custom_components.geofence_journal.storage.resources import upsert_rule
 from homeassistant.const import ATTR_GPS_ACCURACY, ATTR_LATITUDE, ATTR_LONGITUDE
-from tests.test_runtime_fixtures import runtime_resources, seed_runtime_resources
+from tests.test_runtime_fixtures import (
+    RUNTIME_START,
+    runtime_resources,
+    seed_runtime_resources,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -112,6 +118,39 @@ async def test_startup_cleanup_failure_stops_published_generation_and_store(
         _ = await manager.store.async_run_operation(
             lambda connection: connection.execute("SELECT 1").fetchone()
         )
+
+
+async def test_refresh_cleanup_failure_preserves_previous_generation(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "refresh-cleanup.db"
+    _seed(path)
+    _set_tracker(hass, 0.01)
+    manager = GeofenceJournalManager(hass, _settings(path))
+    await manager.async_start()
+    disabled = replace(runtime_resources().rule, enabled=False)
+    await manager.store.async_run_operation(
+        lambda connection: upsert_rule(
+            connection, disabled, RUNTIME_START, name="Disabled"
+        )
+    )
+
+    def fail_cleanup(_connection: SQLConnection) -> None:
+        detail = "injected refresh cleanup failure"
+        raise sqlite3.IntegrityError(detail)
+
+    monkeypatch.setattr(
+        "custom_components.geofence_journal.manager.delete_inactive_runtime_states",
+        fail_cleanup,
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="refresh cleanup failure"):
+        await manager.async_refresh_resources()
+
+    assert manager.listener_entity_ids == ("person.fixture",)
+    await manager.async_stop()
 
 
 async def test_refresh_sync_failure_preserves_previous_generation(

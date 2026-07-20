@@ -49,6 +49,7 @@ async def async_pre_backup(hass: HomeAssistant) -> None:
             with anyio.CancelScope(shield=True):
                 await manager.async_resume(handle)
         except (OSError, sqlite3.Error, StorageError, RuntimeError) as failure:
+            hass.data[DOMAIN] = process_data.model_copy(update={"backup_pause": handle})
             attach_secondary_failure(
                 primary_failure,
                 failure,

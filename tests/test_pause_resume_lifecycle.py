@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from custom_components.geofence_journal.lifecycle import RuntimePauseHandle
+    from custom_components.geofence_journal.storage.db_types import SQLConnection
     from homeassistant.core import HomeAssistant
 
 
@@ -72,6 +73,37 @@ async def test_stale_pause_handle_raises_token_error(
     with pytest.raises(RuntimePauseTokenError):
         await manager.async_resume(handle)
 
+    assert manager.listener_entity_ids == ("person.fixture",)
+    await manager.async_stop()
+
+
+async def test_failed_final_resume_preserves_handle_for_retry(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = await _started_manager(hass, tmp_path / "resume-retry.db")
+    handle = await manager.async_pause("retry-cleanup")
+    cleanup_calls = 0
+
+    def fail_first_cleanup(_connection: SQLConnection) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if cleanup_calls == 1:
+            detail = "injected cleanup failure"
+            raise sqlite3.IntegrityError(detail)
+
+    monkeypatch.setattr(
+        "custom_components.geofence_journal.manager.delete_inactive_runtime_states",
+        fail_first_cleanup,
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="cleanup failure"):
+        await manager.async_resume(handle)
+
+    assert manager.listener_entity_ids == ()
+    await manager.async_resume(handle)
+    assert cleanup_calls == 2
     assert manager.listener_entity_ids == ("person.fixture",)
     await manager.async_stop()
 

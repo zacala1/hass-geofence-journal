@@ -75,9 +75,10 @@ class GeofenceJournalManager:
             self.record_event,
         )
         self._refresh_lock = anyio.Lock()
+        self._maintenance_lock = anyio.Lock()
         self._generation: ResourceGeneration | None = None
-        self._paused_generation: ResourceGeneration | None = None
         self._pause_handles: set[RuntimePauseHandle] = set()
+        self._maintenance_pause: RuntimePauseHandle | None = None
         self._opened = False
         self._entity_state: GeofenceJournalEntityState = UnloadedEntityState()
         self._entity_listeners: set[Callable[[], None]] = set()
@@ -144,11 +145,11 @@ class GeofenceJournalManager:
             async with self._refresh_lock:
                 if self._pause_handles:
                     return
+                await self._store.async_run_operation(delete_inactive_runtime_states)
                 staged = await self._async_stage_current_resources_locked()
                 old_generation = self._generation
                 self._generation = staged
                 await async_suspend_generation(old_generation)
-                await self._store.async_run_operation(delete_inactive_runtime_states)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -157,8 +158,8 @@ class GeofenceJournalManager:
         """Stop observations and timers before draining and closing storage."""
         async with self._refresh_lock:
             await self._async_stop_observations_locked()
-            self._paused_generation = None
             self._pause_handles.clear()
+            self._maintenance_pause = None
             if self._opened:
                 await self._store.async_close()
                 self._opened = False
@@ -169,7 +170,6 @@ class GeofenceJournalManager:
         handle = RuntimePauseHandle.create(reason=reason)
         async with self._refresh_lock:
             if not self._pause_handles:
-                self._paused_generation = self._generation
                 await self._async_stop_observations_locked()
             self._pause_handles.add(handle)
         return handle
@@ -183,11 +183,10 @@ class GeofenceJournalManager:
                 if len(self._pause_handles) > 1:
                     self._pause_handles.remove(handle)
                     return
+                await self._store.async_run_operation(delete_inactive_runtime_states)
                 generation = await self._async_stage_current_resources_locked()
                 self._generation = generation
-                self._paused_generation = None
                 self._pause_handles.remove(handle)
-                await self._store.async_run_operation(delete_inactive_runtime_states)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -195,29 +194,35 @@ class GeofenceJournalManager:
     @asynccontextmanager
     async def pause_and_drain(self) -> AsyncGenerator[None]:
         """Pause observations and drain engines around maintenance work."""
-        handle = await self.async_pause("management-maintenance")
-        database_failed = False
-        try:
-            yield
-        except OSError, sqlite3.Error, StorageError:
-            database_failed = True
-            self._async_record_database_error()
-            raise
-        finally:
-            primary_failure = active_exception()
+        async with self._maintenance_lock:
+            handle = self._maintenance_pause
+            if handle is None:
+                handle = await self.async_pause("management-maintenance")
+                self._maintenance_pause = handle
+            database_failed = False
             try:
-                with anyio.CancelScope(shield=True):
-                    await self.async_resume(handle)
-            except (OSError, sqlite3.Error, StorageError, RuntimeError) as failure:
-                if primary_failure is None:
-                    raise
-                attach_secondary_failure(
-                    primary_failure,
-                    failure,
-                    operation="runtime resume",
-                )
-            if database_failed:
+                yield
+            except OSError, sqlite3.Error, StorageError:
+                database_failed = True
                 self._async_record_database_error()
+                raise
+            finally:
+                primary_failure = active_exception()
+                try:
+                    with anyio.CancelScope(shield=True):
+                        await self.async_resume(handle)
+                except (OSError, sqlite3.Error, StorageError, RuntimeError) as failure:
+                    if primary_failure is None:
+                        raise
+                    attach_secondary_failure(
+                        primary_failure,
+                        failure,
+                        operation="runtime resume",
+                    )
+                else:
+                    self._maintenance_pause = None
+                if database_failed:
+                    self._async_record_database_error()
 
     async def _async_stage_current_resources_locked(
         self,

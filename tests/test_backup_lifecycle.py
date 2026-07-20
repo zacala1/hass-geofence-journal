@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from shutil import copyfile
 from typing import TYPE_CHECKING, cast
 
@@ -179,6 +180,43 @@ async def test_failed_post_keeps_pause_handle_for_retry(
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")
+async def test_cleanup_failure_keeps_backup_pause_retryable(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = await _setup_seeded_entry(hass, tmp_path / "backup-cleanup-retry.db")
+    manager = entry.runtime_data
+    await async_pre_backup(hass)
+    pause = _process_data(hass).backup_pause
+    assert pause is not None
+    cleanup_calls = 0
+
+    def fail_first_cleanup(_connection: SQLConnection) -> None:
+        nonlocal cleanup_calls
+        cleanup_calls += 1
+        if cleanup_calls == 1:
+            detail = "injected backup cleanup failure"
+            raise sqlite3.IntegrityError(detail)
+
+    monkeypatch.setattr(
+        "custom_components.geofence_journal.manager.delete_inactive_runtime_states",
+        fail_first_cleanup,
+    )
+
+    with pytest.raises(sqlite3.IntegrityError, match="backup cleanup failure"):
+        await async_post_backup(hass)
+
+    assert _process_data(hass).backup_pause is pause
+    assert manager.listener_entity_ids == ()
+    await async_post_backup(hass)
+    assert cleanup_calls == 2
+    assert _process_data(hass).backup_pause is None
+    assert manager.listener_entity_ids == ("person.fixture",)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
 async def test_failed_pre_rolls_back_pause_and_allows_retry(
     hass: HomeAssistant,
     tmp_path: Path,
@@ -210,4 +248,41 @@ async def test_failed_pre_rolls_back_pause_and_allows_retry(
     assert _process_data(hass).backup_pause is not None
     assert manager.listener_entity_ids == ()
     await async_post_backup(hass)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.usefixtures("enable_custom_integrations")
+async def test_failed_pre_retains_pause_when_rollback_resume_fails(
+    hass: HomeAssistant,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = await _setup_seeded_entry(hass, tmp_path / "backup-rollback-retry.db")
+    manager = entry.runtime_data
+
+    async def fail_close() -> None:
+        raise StorageClosedError
+
+    def fail_cleanup(_connection: SQLConnection) -> None:
+        detail = "injected rollback cleanup failure"
+        raise sqlite3.IntegrityError(detail)
+
+    monkeypatch.setattr(manager.store, "async_close", fail_close)
+    monkeypatch.setattr(
+        "custom_components.geofence_journal.manager.delete_inactive_runtime_states",
+        fail_cleanup,
+    )
+
+    with pytest.raises(StorageClosedError) as raised:
+        await async_pre_backup(hass)
+
+    assert any(
+        "backup pause rollback also failed" in note for note in raised.value.__notes__
+    )
+    assert _process_data(hass).backup_pause is not None
+    assert manager.listener_entity_ids == ()
+    monkeypatch.undo()
+    await async_post_backup(hass)
+    assert _process_data(hass).backup_pause is None
+    assert manager.listener_entity_ids == ("person.fixture",)
     assert await hass.config_entries.async_unload(entry.entry_id)
