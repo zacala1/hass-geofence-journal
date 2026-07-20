@@ -5,11 +5,11 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, Final
 
 from homeassistant.const import Platform
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic import ConfigDict, TypeAdapter, ValidationError
 
 from .const import (
     CONF_COOLDOWN_SECONDS,
@@ -31,6 +31,7 @@ from .management_backend import (
     SQLiteManagementBackend,
 )
 from .manager import GeofenceJournalManager
+from .process_data import IntegrationProcessData
 from .services import async_register_services, async_unregister_services
 from .settings import ConfigValue, Settings, SettingsFieldError
 from .storage.errors import (
@@ -67,16 +68,6 @@ RETRYABLE_SQLITE_CODES: Final = frozenset(
 CONFIG_VALUE_ADAPTER: Final[TypeAdapter[ConfigValue]] = TypeAdapter(
     ConfigValue, config=ConfigDict(strict=True)
 )
-
-
-class IntegrationProcessData(BaseModel):
-    """Process-lifetime registry retained by the non-removable HTTP view."""
-
-    model_config: ClassVar[ConfigDict] = ConfigDict(
-        arbitrary_types_allowed=True, frozen=True
-    )
-
-    exports: ExportRegistry
 
 
 async def async_setup_entry(
