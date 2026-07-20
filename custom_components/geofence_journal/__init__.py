@@ -132,14 +132,15 @@ async def async_setup_entry(
 async def async_unload_entry(
     hass: HomeAssistant, entry: GeofenceJournalConfigEntry
 ) -> bool:
-    """Stop observations and storage, then remove platforms and services."""
-    await entry.runtime_data.async_stop()
+    """Remove platforms before committing runtime and service shutdown."""
     platforms_unloaded = await hass.config_entries.async_unload_platforms(
         entry, PLATFORMS
     )
-    if platforms_unloaded:
-        await async_unregister_services(hass)
-    return platforms_unloaded
+    if not platforms_unloaded:
+        return False
+    await entry.runtime_data.async_stop()
+    await async_unregister_services(hass)
+    return True
 
 
 async def _async_reload_entry(
