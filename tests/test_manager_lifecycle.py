@@ -64,7 +64,8 @@ async def test_startup_sync_failure_commits_no_generation_and_closes_store(
     manager = GeofenceJournalManager(hass, _settings(path))
 
     async def fail_sync(_listener: GeofenceTrackerListener) -> None:
-        raise StorageClosedError
+        detail = "injected startup sync failure"
+        raise RuntimeError(detail)
 
     monkeypatch.setattr(
         GeofenceTrackerListener,
@@ -72,7 +73,7 @@ async def test_startup_sync_failure_commits_no_generation_and_closes_store(
         fail_sync,
     )
 
-    with pytest.raises(StorageClosedError):
+    with pytest.raises(RuntimeError, match="injected startup sync failure"):
         await manager.async_start()
 
     assert manager.listener_entity_ids == ()
