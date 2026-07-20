@@ -123,17 +123,24 @@ class GeofenceJournalManager:
         """Replace listeners and recovered engines from enabled DB resources."""
         try:
             async with self._refresh_lock:
-                old_runtimes = await self._async_stop_observations_locked()
                 if self._paused:
                     return
                 resources = await self._store.async_run_operation(list_active_resources)
+                (
+                    staged_runtimes,
+                    staged_listener,
+                ) = await self._async_stage_resources_locked(resources)
+                old_runtimes = self._runtimes
+                old_listener = self._listener
+                self._runtimes = staged_runtimes
+                self._listener = staged_listener
+                await self._async_suspend_generation(old_listener, old_runtimes)
                 active_rule_ids = {
                     str(configured.rule.rule_id) for configured in resources
                 }
                 for runtime in old_runtimes:
                     if str(runtime.resources.rule.rule_id) not in active_rule_ids:
                         await runtime.engine.async_deactivate()
-                await self._async_build_resources_locked(resources)
         except OSError, sqlite3.Error, StorageError:
             self._async_record_database_error()
             raise
@@ -163,50 +170,67 @@ class GeofenceJournalManager:
             finally:
                 self._paused = False
                 resources = await self._store.async_run_operation(list_active_resources)
-                await self._async_build_resources_locked(resources)
+                (
+                    self._runtimes,
+                    self._listener,
+                ) = await self._async_stage_resources_locked(resources)
                 if database_failed:
                     self._async_record_database_error()
 
     async def _async_stop_observations_locked(self) -> tuple[RuleRuntime, ...]:
         listener = self._listener
         self._listener = None
-        if listener is not None:
-            await listener.async_stop()
         runtimes = self._runtimes
-        for runtime in runtimes:
-            await runtime.engine.async_suspend()
         self._runtimes = ()
+        await self._async_suspend_generation(listener, runtimes)
         return runtimes
 
-    async def _async_build_resources_locked(
+    async def _async_stage_resources_locked(
         self, resources: tuple[ConfiguredResources, ...]
-    ) -> None:
+    ) -> tuple[tuple[RuleRuntime, ...], GeofenceTrackerListener]:
         runtimes: list[RuleRuntime] = []
-        for configured in resources:
-            engine = RuleTransitionEngine(
-                configured.rule,
-                self._store,
-                RuntimeDependencies(
-                    clock=self._clock,
-                    scheduler=self._scheduler,
-                    event_ids=self._event_ids,
-                    source=LocationSource.GPS,
-                    store_coordinates=self._settings.store_coordinates,
-                    observer=self._transition_observer(configured),
-                    confirmation_evaluator=HomeAssistantConfirmationEvaluator(
-                        self._hass, configured
+        listener: GeofenceTrackerListener | None = None
+        staged = False
+        try:
+            for configured in resources:
+                engine = RuleTransitionEngine(
+                    configured.rule,
+                    self._store,
+                    RuntimeDependencies(
+                        clock=self._clock,
+                        scheduler=self._scheduler,
+                        event_ids=self._event_ids,
+                        source=LocationSource.GPS,
+                        store_coordinates=self._settings.store_coordinates,
+                        observer=self._transition_observer(configured),
+                        confirmation_evaluator=HomeAssistantConfirmationEvaluator(
+                            self._hass, configured
+                        ),
                     ),
-                ),
+                )
+                await engine.async_recover()
+                runtimes.append(RuleRuntime(configured, engine))
+            staged_runtimes = tuple(runtimes)
+            await self._async_update_recovered_last_event()
+            listener = GeofenceTrackerListener(
+                self._hass, staged_runtimes, self._async_record_database_error
             )
-            await engine.async_recover()
-            runtimes.append(RuleRuntime(configured, engine))
-        self._runtimes = tuple(runtimes)
-        await self._async_update_recovered_last_event()
-        listener = GeofenceTrackerListener(
-            self._hass, self._runtimes, self._async_record_database_error
-        )
-        self._listener = listener
-        await listener.async_start()
+            await listener.async_start()
+            staged = True
+            return staged_runtimes, listener
+        finally:
+            if not staged:
+                await self._async_suspend_generation(listener, tuple(runtimes))
+
+    @staticmethod
+    async def _async_suspend_generation(
+        listener: GeofenceTrackerListener | None,
+        runtimes: tuple[RuleRuntime, ...],
+    ) -> None:
+        if listener is not None:
+            await listener.async_stop()
+        for runtime in runtimes:
+            await runtime.engine.async_suspend()
 
     def _transition_observer(
         self, resources: ConfiguredResources
