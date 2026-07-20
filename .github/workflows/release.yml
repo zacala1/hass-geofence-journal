@@ -92,7 +92,8 @@ jobs:
             --with "pytest==9.0.3" \
             --with "pytest-homeassistant-custom-component==0.13.344" \
             --with-requirements "${smoke_root}/manifest-requirements.txt" \
-            python -m pytest test_release_artifact_smoke.py -q
+            python -m pytest test_release_artifact_smoke.py -q \
+            -o asyncio_mode=auto
 
       - name: Upload verified release archive
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
