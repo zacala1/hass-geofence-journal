@@ -21,7 +21,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 CONST_VERSION_PATTERN = re.compile(
-    r'^VERSION: Final = "(?P<value>\d+\.\d+\.\d+)"$', re.MULTILINE
+    r'^VERSION: Final = "(?P<value>\d+\.\d+\.\d+(?:(?:a|b|rc)[1-9]\d*)?)"$',
+    re.MULTILINE,
 )
 LOCKFILE_PROJECT_PACKAGE_FIELD: Final = "lockfile project package"
 LOCKFILE_VERSION_FIELD: Final = "lockfile version"
@@ -106,7 +107,10 @@ class _ManifestFile(_ReleaseModel):
 class _HacsFile(_ReleaseModel):
     """Relevant HACS metadata fields."""
 
+    filename: str
+    hide_default_branch: bool
     homeassistant: str
+    zip_release: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +128,10 @@ class ReleaseMetadata:
     manifest_version: str
     manifest_domain: str
     constants_version: str
+    hacs_filename: str
+    hacs_hide_default_branch: bool
     hacs_home_assistant_version: str
+    hacs_zip_release: bool
     readme: str
     workflow: str
 
@@ -157,7 +164,10 @@ def load_release_metadata(
         manifest_version=manifest.version,
         manifest_domain=manifest.domain,
         constants_version=_constant_version(manifest_path.with_name("const.py")),
+        hacs_filename=hacs.filename,
+        hacs_hide_default_branch=hacs.hide_default_branch,
         hacs_home_assistant_version=hacs.homeassistant,
+        hacs_zip_release=hacs.zip_release,
         readme=_read_text(root / "README.md"),
         workflow=_read_text(root / ".github" / "workflows" / "ci.yml"),
     )

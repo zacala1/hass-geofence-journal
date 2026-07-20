@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -16,6 +16,8 @@ concurrency:
 jobs:
   verify:
     name: Verify and package
+    outputs:
+      prerelease: ${{ steps.release_metadata.outputs.prerelease }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -40,6 +42,13 @@ jobs:
         if: github.ref_type != 'tag'
         run: uv run python -m scripts.release check
 
+      - name: Classify release
+        if: github.ref_type == 'tag'
+        id: release_metadata
+        run: >-
+          uv run python -m scripts.release classify "${GITHUB_REF_NAME}"
+          >> "${GITHUB_OUTPUT}"
+
       - name: Ruff lint
         run: uv run ruff check .
 
@@ -52,7 +61,7 @@ jobs:
       - name: Pytest with coverage
         run: >-
           uv run pytest --cov=custom_components.geofence_journal
-          --cov-fail-under=95 -q
+          --cov-branch --cov-fail-under=95 -q
 
       - name: Build deterministic release archive
         run: uv run python -m scripts.release build dist
@@ -61,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: geofence-journal-release
-          path: dist/*.zip
+          path: dist/geofence_journal.zip
           if-no-files-found: error
           retention-days: 7
 
@@ -118,6 +127,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip
-          --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            gh release create "${GITHUB_REF_NAME}" dist/geofence_journal.zip \
+              --verify-tag --generate-notes --title "${GITHUB_REF_NAME}" \
+              --prerelease
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/geofence_journal.zip \
+              --verify-tag --generate-notes --title "${GITHUB_REF_NAME}"
+          fi

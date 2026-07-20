@@ -43,4 +43,4 @@ jobs:
       - name: Pytest with coverage
         run: >-
           uv run pytest --cov=custom_components.geofence_journal
-          --cov-fail-under=95 -q
+          --cov-branch --cov-fail-under=95 -q

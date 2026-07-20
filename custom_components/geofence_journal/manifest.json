@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/zacala1/hass-geofence-journal/issues",
   "requirements": ["pydantic==2.13.4"],
   "single_config_entry": true,
-  "version": "0.1.0"
+  "version": "0.1.0b1"
 }

@@ -1,5 +1,8 @@
 {
   "name": "Geofence Journal",
   "content_in_root": false,
-  "homeassistant": "2026.7.0"
+  "filename": "geofence_journal.zip",
+  "hide_default_branch": true,
+  "homeassistant": "2026.7.0",
+  "zip_release": true
 }
