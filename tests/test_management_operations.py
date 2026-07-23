@@ -32,6 +32,7 @@ from custom_components.geofence_journal.models import (
     Seconds,
     TrackerKind,
 )
+from custom_components.geofence_journal.retention import PurgeRetentionRequest
 from custom_components.geofence_journal.settings import Settings
 from custom_components.geofence_journal.storage import AsyncSQLiteStore
 from custom_components.geofence_journal.storage.events import MissingEventReferenceError
@@ -125,11 +126,15 @@ async def _seed(backend: SQLiteManagementBackend) -> None:
         )
     )
     _ = await backend.async_upsert_journal(
-        UpsertJournalRequest(resource_id=JOURNAL_ID, name="Coverage journal")
+        UpsertJournalRequest(
+            resource_id=JOURNAL_ID,
+            name="Coverage journal",
+            retention_days=30,
+        )
     )
 
 
-async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) -> None:
+async def test_manual_mutations_export_purges_and_compaction(tmp_path: Path) -> None:
     backend, store, _, coordinator, scheduled, observed = await _open_backend(tmp_path)
     await _seed(backend)
 
@@ -162,6 +167,16 @@ async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) ->
             journal_id=JOURNAL_ID,
         )
     )
+    retention_dry_run = await backend.async_purge_retention(
+        PurgeRetentionRequest(journal_id=JOURNAL_ID)
+    )
+    retention_delete = await backend.async_purge_retention(
+        PurgeRetentionRequest(
+            journal_id=JOURNAL_ID,
+            dry_run=False,
+            confirm=True,
+        )
+    )
     compacted = await backend.async_compact_database()
     coordinate_row = await store.async_run_operation(
         lambda connection: connection.execute(
@@ -180,8 +195,10 @@ async def test_manual_mutations_export_dry_run_and_compaction(tmp_path: Path) ->
     assert len(scheduled) == 1
     assert dry_run.matched_events == 1
     assert dry_run.dry_run
+    assert retention_dry_run.dry_run
+    assert retention_delete.deleted_events == 0
     assert compacted.database_bytes_after > 0
-    assert coordinator.pauses == 4
+    assert coordinator.pauses == 5
     assert observed == [NOW]
 
 
