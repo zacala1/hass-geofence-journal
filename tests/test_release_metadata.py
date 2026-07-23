@@ -242,6 +242,7 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     assert "latestRelease{tagName}" in workflow
     assert 'test "${latest_tag}" != "${GITHUB_REF_NAME}"' in workflow
     assert "INPUT_IGNORE" not in workflow
+    assert "INPUT_REPOSITORY" not in workflow
     assert workflow.index("-m scripts.release check") < workflow.index(
         "-m scripts.release build"
     )
@@ -264,6 +265,7 @@ def test_validation_workflow_pins_official_validator_containers() -> None:
     assert expected_images <= {image for image in expected_images if image in workflow}
     assert "INPUT_CATEGORY: integration" in workflow
     assert "INPUT_IGNORE" not in workflow
+    assert "INPUT_REPOSITORY" not in workflow
     assert "schedule:" in workflow
 
 

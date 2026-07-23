@@ -119,7 +119,6 @@ jobs:
           INPUT_CATEGORY: integration
           INPUT_COMMENT: "false"
           INPUT_GITHUB_TOKEN: ${{ github.token }}
-          INPUT_REPOSITORY: ${{ github.repository }}
 
   validate-hassfest:
     name: Hassfest
