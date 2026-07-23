@@ -5,7 +5,6 @@ from pydantic import TypeAdapter
 
 ROOT: Final = Path(__file__).parents[1]
 REPOSITORY_URL: Final = "https://github.com/zacala1/hass-geofence-journal"
-PYDANTIC_REQUIREMENT: Final = "pydantic==2.13.4"
 
 
 class ReleaseManifest(TypedDict):
@@ -70,15 +69,15 @@ def test_manifest_describes_the_custom_integration_release() -> None:
     assert manifest["dependencies"] == ["http"]
 
 
-def test_manifest_installs_pydantic_for_a_clean_home_assistant() -> None:
-    # Given: runtime modules import Pydantic before config-entry setup can run.
+def test_manifest_does_not_repin_home_assistant_core_dependencies() -> None:
+    # Given: Home Assistant 2026.7 already supplies the runtime libraries used here.
     manifest = _manifest()
 
-    # When: Home Assistant resolves the integration's external requirements.
+    # When: Home Assistant resolves custom integration requirements.
     requirements = manifest["requirements"]
 
-    # Then: the tested runtime version is installed on a clean HA environment.
-    assert requirements == [PYDANTIC_REQUIREMENT]
+    # Then: the integration cannot conflict with HA patch-level dependency pins.
+    assert requirements == []
 
 
 def test_hacs_metadata_targets_the_supported_home_assistant_release() -> None:
