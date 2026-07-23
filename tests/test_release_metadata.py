@@ -260,3 +260,12 @@ def test_dependabot_monitors_actions_and_locked_python_dependencies() -> None:
     assert 'package-ecosystem: "github-actions"' in policy
     assert 'package-ecosystem: "uv"' in policy
     assert policy.count('interval: "weekly"') == 2
+
+
+def test_security_policy_routes_sensitive_reports_privately() -> None:
+    policy = " ".join((ROOT / "SECURITY.md").read_text("utf-8").split()).lower()
+
+    assert "/security/advisories/new" in policy
+    assert "do not open a public issue" in policy
+    assert "coordinates" in policy
+    assert "database" in policy
