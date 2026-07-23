@@ -349,6 +349,32 @@
       }
     }
   },
+  "issues": {
+    "database_unavailable": {
+      "title": "Geofence Journal 데이터베이스를 사용할 수 없음",
+      "description": "Geofence Journal이 데이터베이스를 안전하게 읽거나 쓸 수 없습니다. 저장소 가용성과 권한을 확인한 뒤 통합을 다시 불러오세요. 데이터베이스가 손상됐다면 Home Assistant 백업을 복원하세요."
+    }
+  },
+  "exceptions": {
+    "invalid_service_data": {
+      "message": "작업 데이터가 올바르지 않습니다(검증 오류 {count}개)."
+    },
+    "operation_rejected": {
+      "message": "요청한 작업이 거부되었습니다: {reason}"
+    },
+    "constraint_violation": {
+      "message": "참조 데이터의 일관성을 유지해야 하므로 데이터베이스가 이 변경을 거부했습니다."
+    },
+    "storage_unavailable": {
+      "message": "Geofence Journal 저장소를 일시적으로 사용할 수 없습니다."
+    },
+    "database_failure": {
+      "message": "Geofence Journal 데이터베이스 작업에 실패했습니다."
+    },
+    "filesystem_failure": {
+      "message": "Geofence Journal 파일 작업에 실패했습니다."
+    }
+  },
   "entity": {
     "sensor": {
       "last_event": {

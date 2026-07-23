@@ -246,6 +246,18 @@ def test_service_and_entity_translations_cover_the_metadata_contract() -> None:
             "resource_type.options.journal",
             "resource_type.options.rule",
         )
+        assert _leaf_paths(catalog["issues"]) == _paths(
+            "database_unavailable.title",
+            "database_unavailable.description",
+        )
+        assert _leaf_paths(catalog["exceptions"]) == _paths(
+            "invalid_service_data.message",
+            "operation_rejected.message",
+            "constraint_violation.message",
+            "storage_unavailable.message",
+            "database_failure.message",
+            "filesystem_failure.message",
+        )
 
 
 def test_english_and_korean_translation_shapes_are_identical() -> None:

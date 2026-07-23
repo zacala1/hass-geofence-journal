@@ -29,6 +29,7 @@ from .service_dispatch import (
     async_dispatch_service,
     async_fire_journal_event,
 )
+from .storage.errors import StorageError
 from .storage.events import EventNotFoundError, MissingEventReferenceError
 from .storage.maintenance import (
     CheckpointBusyError,
@@ -83,7 +84,11 @@ def _service_handler(
         except ValidationError as error:
             count = error.error_count()
             detail = f"invalid service data ({count} validation error(s))"
-            raise ServiceValidationError(detail) from None
+            raise _translated_service_error(
+                detail,
+                "invalid_service_data",
+                {"count": str(count)},
+            ) from None
         except (
             EventNotFoundError,
             MissingEventReferenceError,
@@ -91,9 +96,25 @@ def _service_handler(
             PurgeConfirmationError,
             ResetConfirmationError,
             ResourceCatalogError,
-            sqlite3.IntegrityError,
         ) as error:
-            raise ServiceValidationError(str(error)) from error
+            detail = str(error)
+            raise _translated_service_error(
+                detail,
+                "operation_rejected",
+                {"reason": detail},
+            ) from error
+        except sqlite3.IntegrityError as error:
+            detail = "database constraints rejected the requested operation"
+            raise _translated_service_error(detail, "constraint_violation") from error
+        except StorageError as error:
+            detail = "journal storage is temporarily unavailable"
+            raise _translated_service_error(detail, "storage_unavailable") from error
+        except sqlite3.Error as error:
+            detail = "database operation failed"
+            raise _translated_service_error(detail, "database_failure") from error
+        except OSError as error:
+            detail = "filesystem operation failed"
+            raise _translated_service_error(detail, "filesystem_failure") from error
 
     return handle
 
@@ -103,3 +124,16 @@ async def _require_admin(call: ServiceCall) -> None:
     user = None if user_id is None else await call.hass.auth.async_get_user(user_id)
     if user is None or not user.is_admin:
         raise Unauthorized(context=call.context, user_id=user_id)
+
+
+def _translated_service_error(
+    message: str,
+    key: str,
+    placeholders: dict[str, str] | None = None,
+) -> ServiceValidationError:
+    return ServiceValidationError(
+        message,
+        translation_domain=DOMAIN,
+        translation_key=key,
+        translation_placeholders=placeholders,
+    )

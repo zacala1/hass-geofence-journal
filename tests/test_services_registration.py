@@ -226,7 +226,7 @@ async def test_malformed_service_data_never_reaches_backend(
     await async_register_services(hass, backend)
 
     # When / Then: the typed boundary raises HA's validation error atomically.
-    with pytest.raises(ServiceValidationError):
+    with pytest.raises(ServiceValidationError) as raised:
         _ = await hass.services.async_call(
             DOMAIN,
             "upsert_tracker",
@@ -236,6 +236,9 @@ async def test_malformed_service_data_never_reaches_backend(
             return_response=True,
         )
     assert backend.tracker_request is None
+    assert raised.value.translation_domain == DOMAIN
+    assert raised.value.translation_key == "invalid_service_data"
+    assert raised.value.translation_placeholders == {"count": "1"}
 
 
 @pytest.mark.usefixtures("enable_custom_integrations")

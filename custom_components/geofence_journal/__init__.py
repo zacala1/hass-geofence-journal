@@ -32,6 +32,7 @@ from .management_backend import (
 )
 from .manager import GeofenceJournalManager
 from .process_data import IntegrationProcessData
+from .repairs import async_subscribe_database_issue
 from .services import async_register_services, async_unregister_services
 from .settings import ConfigValue, Settings, SettingsFieldError
 from .storage.errors import (
@@ -79,8 +80,11 @@ async def async_setup_entry(
     except SettingsFieldError as error:
         raise ConfigEntryError(str(error)) from error
     manager = GeofenceJournalManager(hass, settings)
+    repair_unsubscribe = async_subscribe_database_issue(hass, manager)
+    manager_started = False
     try:
         await manager.async_start()
+        manager_started = True
     except OSError as error:
         raise ConfigEntryNotReady(str(error)) from error
     except sqlite3.OperationalError as error:
@@ -94,6 +98,9 @@ async def async_setup_entry(
         sqlite3.DatabaseError,
     ) as error:
         raise ConfigEntryError(str(error)) from error
+    finally:
+        if not manager_started:
+            repair_unsubscribe()
     entry.runtime_data = manager
     services_registered = False
     platforms_loaded = False
@@ -121,11 +128,13 @@ async def async_setup_entry(
     finally:
         if not setup_complete:
             await manager.async_stop()
+            repair_unsubscribe()
             if platforms_loaded:
                 _ = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
             if services_registered:
                 await async_unregister_services(hass)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    entry.async_on_unload(repair_unsubscribe)
     return True
 
 

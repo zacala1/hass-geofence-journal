@@ -349,6 +349,32 @@
       }
     }
   },
+  "issues": {
+    "database_unavailable": {
+      "title": "Geofence Journal database is unavailable",
+      "description": "Geofence Journal cannot safely read or write its database. Check storage availability and permissions, then reload the integration. Restore a Home Assistant backup if the database is damaged."
+    }
+  },
+  "exceptions": {
+    "invalid_service_data": {
+      "message": "The action data is invalid ({count} validation error(s))."
+    },
+    "operation_rejected": {
+      "message": "The requested operation was rejected: {reason}"
+    },
+    "constraint_violation": {
+      "message": "The database rejected this change because referenced data must remain consistent."
+    },
+    "storage_unavailable": {
+      "message": "Geofence Journal storage is temporarily unavailable."
+    },
+    "database_failure": {
+      "message": "The Geofence Journal database operation failed."
+    },
+    "filesystem_failure": {
+      "message": "The Geofence Journal file operation failed."
+    }
+  },
   "entity": {
     "sensor": {
       "last_event": {
