@@ -32,10 +32,18 @@ EXPECTED_TABLES = {
 }
 EXPECTED_INDEXES = {
     "idx_events_journal_time",
+    "idx_events_journal_time_id",
     "idx_events_tracker_time",
     "idx_events_place_time",
     "idx_events_status",
+    "idx_events_time_id",
+    "idx_revisions_event",
     "uq_events_transition",
+}
+ADDITIVE_V1_INDEXES = {
+    "idx_events_journal_time_id",
+    "idx_events_time_id",
+    "idx_revisions_event",
 }
 
 
@@ -70,6 +78,39 @@ def test_bootstrap_is_idempotent_when_reopened(tmp_path: Path) -> None:
 
     # Then
     assert reopened_schema == original_schema
+
+
+def test_open_restores_additive_indexes_for_an_existing_v1_database(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "existing-v1.db"
+    with SQLiteStore(database_path) as store:
+        for index_name in ADDITIVE_V1_INDEXES:
+            _ = store.run_operation(
+                lambda connection, name=index_name: connection.execute(
+                    f"DROP INDEX IF EXISTS {name}"
+                )
+            )
+
+    with SQLiteStore(database_path) as reopened:
+        indexes = reopened.schema_objects("index")
+
+    assert indexes >= ADDITIVE_V1_INDEXES
+
+
+def test_open_rejects_an_additive_index_with_conflicting_columns(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "conflicting-index.db"
+    with SQLiteStore(database_path):
+        pass
+    with closing(sqlite3.connect(database_path)) as connection:
+        _ = connection.execute("DROP INDEX idx_events_time_id")
+        _ = connection.execute("CREATE INDEX idx_events_time_id ON location_events(id)")
+        connection.commit()
+
+    with pytest.raises(DatabaseSchemaError, match="unexpected columns"):
+        _ = SQLiteStore(database_path).open()
 
 
 def test_open_is_idempotent_on_the_same_store_instance(tmp_path: Path) -> None:

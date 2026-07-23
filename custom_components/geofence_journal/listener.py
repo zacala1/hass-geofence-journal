@@ -6,6 +6,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, final
 
+import anyio
 from homeassistant.const import ATTR_GPS_ACCURACY, ATTR_LATITUDE, ATTR_LONGITUDE
 from homeassistant.helpers.event import async_track_state_change_event
 from pydantic import ConfigDict, TypeAdapter, ValidationError
@@ -131,19 +132,20 @@ class GeofenceTrackerListener:
     ) -> None:
         """Bind recovered engines to their configured tracker entity IDs."""
         self._hass = hass
-        self._runtimes = runtimes
+        self._runtimes_by_entity = _index_runtimes(runtimes)
         self._on_database_error = on_database_error
         self._remove: Callable[[], None] | None = None
         self._active = False
+        self._pending_states: dict[str, State] = {}
+        self._processing_entities: set[str] = set()
+        self._idle: anyio.Event | None = None
         self._zones = HomeAssistantZoneLookup(hass)
         self._distance = HaversineDistance()
 
     @property
     def entity_ids(self) -> tuple[str, ...]:
         """Return the unique enabled tracker IDs in deterministic order."""
-        return tuple(
-            sorted({runtime.resources.tracker.entity_id for runtime in self._runtimes})
-        )
+        return tuple(sorted(self._runtimes_by_entity))
 
     async def async_start(self) -> None:
         """Register the current listener then synchronize existing states."""
@@ -166,7 +168,7 @@ class GeofenceTrackerListener:
         for entity_id in self.entity_ids:
             state = self._hass.states.get(entity_id)
             if state is not None:
-                await self._async_process_state(state)
+                await self.async_process_state(state)
 
     async def async_stop(self) -> None:
         """Invalidate queued callbacks and unregister this generation."""
@@ -174,6 +176,10 @@ class GeofenceTrackerListener:
         if self._remove is not None:
             self._remove()
             self._remove = None
+        self._pending_states.clear()
+        idle = self._idle
+        if idle is not None:
+            await idle.wait()
 
     async def _async_handle_event(self, event: Event[EventStateChangedData]) -> None:
         if not self._active:
@@ -188,15 +194,30 @@ class GeofenceTrackerListener:
             raise
 
     async def async_process_state(self, state: State) -> None:
-        """Evaluate one HA tracker sample against every linked active rule."""
-        if not self._active:
+        """Process one sample while bounding backlog to the latest per tracker."""
+        entity_id = state.entity_id
+        if not self._active or entity_id not in self._runtimes_by_entity:
             return
-        await self._async_process_state(state)
+        self._pending_states[entity_id] = state
+        if entity_id in self._processing_entities:
+            return
+        if not self._processing_entities:
+            self._idle = anyio.Event()
+        self._processing_entities.add(entity_id)
+        try:
+            while self._active:
+                pending = self._pending_states.pop(entity_id, None)
+                if pending is None:
+                    break
+                await self._async_process_state(pending)
+        finally:
+            _ = self._pending_states.pop(entity_id, None)
+            self._processing_entities.remove(entity_id)
+            if not self._processing_entities and self._idle is not None:
+                self._idle.set()
 
     async def _async_process_state(self, state: State) -> None:
-        for runtime in self._runtimes:
-            if runtime.resources.tracker.entity_id != state.entity_id:
-                continue
+        for runtime in self._runtimes_by_entity[state.entity_id]:
             await self._async_process_runtime(runtime, state)
 
     async def _async_process_runtime(self, runtime: RuleRuntime, state: State) -> None:
@@ -215,3 +236,16 @@ def _raw_number(state: State, attribute: str) -> RawNumber:
         return RAW_NUMBER_ADAPTER.validate_python(state.attributes.get(attribute))
     except ValidationError:
         return None
+
+
+def _index_runtimes(
+    runtimes: tuple[RuleRuntime, ...],
+) -> dict[str, tuple[RuleRuntime, ...]]:
+    indexed: dict[str, list[RuleRuntime]] = {}
+    for runtime in runtimes:
+        entity_id = runtime.resources.tracker.entity_id
+        indexed.setdefault(entity_id, []).append(runtime)
+    return {
+        entity_id: tuple(entity_runtimes)
+        for entity_id, entity_runtimes in indexed.items()
+    }

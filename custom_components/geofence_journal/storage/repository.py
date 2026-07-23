@@ -27,6 +27,7 @@ from .errors import (
     StorageClosedError,
     UnsupportedSchemaVersionError,
 )
+from .indexes import ensure_additive_v1_indexes
 from .records import (
     ConfirmedTransition,
     RuntimeStateRecord,
@@ -88,6 +89,7 @@ class SQLiteStore:
                 version = _validated_version(connection)
                 if version is None:
                     bootstrap_v1(connection, inject_failure=inject_migration_failure)
+                ensure_additive_v1_indexes(connection)
                 self._configure_connection(connection)
             except (
                 DatabaseSchemaError,
