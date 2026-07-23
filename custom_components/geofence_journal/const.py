@@ -4,7 +4,7 @@ from typing import Final
 
 DOMAIN: Final = "geofence_journal"
 TITLE: Final = "Geofence Journal"
-VERSION: Final = "0.1.0b1"
+VERSION: Final = "0.1.0b2"
 
 CONF_STORE_COORDINATES: Final = "store_coordinates"
 CONF_ENTER_CONFIRMATION_SECONDS: Final = "enter_confirmation_seconds"

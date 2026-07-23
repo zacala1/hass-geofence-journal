@@ -58,7 +58,7 @@ def test_manifest_describes_the_custom_integration_release() -> None:
     assert release_contract == (
         "geofence_journal",
         "Geofence Journal",
-        "0.1.0b1",
+        "0.1.0b2",
         "service",
         "calculated",
     )
@@ -138,9 +138,14 @@ def test_readme_documents_the_release_safety_contract() -> None:
         "never silently",
         "Recorder",
         ".storage/geofence_journal/geofence_journal.db",
-        "v0.1.0b1",
+        "v0.1.0b2",
         "HACS prerelease",
         "outside the Home Assistant configuration directory",
+        "geofence_journal.list_resources",
+        "geofence_journal.purge_retention",
+        "binary_sensor.geofence_journal_healthy",
+        "retention_days",
+        "private diagnostics",
     }
 
     # Then: installation, privacy, retention, and destructive recovery are explicit.
@@ -151,6 +156,16 @@ def test_readme_documents_the_release_safety_contract() -> None:
     assert "Manual installation" in readme
     assert "Home Assistant 2026.7" in readme
     assert "frontend" in readme
+
+
+def test_changelog_identifies_the_current_preview_scope() -> None:
+    changelog = (ROOT / "CHANGELOG.md").read_text("utf-8")
+
+    assert "0.1.0b2" in changelog
+    assert "resource discovery" in changelog
+    assert "retention" in changelog
+    assert "diagnostics" in changelog
+    assert "brand" in changelog
 
 
 def test_ci_workflow_runs_every_local_release_gate() -> None:
