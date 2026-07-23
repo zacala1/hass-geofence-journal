@@ -35,6 +35,7 @@ from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from pytest_homeassistant_custom_component.common import MockUser, async_capture_events
 
 if TYPE_CHECKING:
+    from custom_components.geofence_journal import resource_catalog
     from custom_components.geofence_journal.export import ExportRequest
     from homeassistant.core import HomeAssistant, ServiceResponse
 
@@ -86,6 +87,24 @@ class DispatchBackend:
     async def async_upsert_rule(self, request: UpsertRuleRequest) -> ResourceResponse:
         _ = request
         return ResourceResponse(resource_id=RESOURCE_ID)
+
+    async def async_list_resources(
+        self, request: resource_catalog.ListResourcesRequest
+    ) -> resource_catalog.ResourceListResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_get_resource(
+        self, request: resource_catalog.GetResourceRequest
+    ) -> resource_catalog.ResourceGetResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_delete_resource(
+        self, request: resource_catalog.DeleteResourceRequest
+    ) -> resource_catalog.ResourceDeleteResponse:
+        _ = request
+        raise NotImplementedError
 
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None

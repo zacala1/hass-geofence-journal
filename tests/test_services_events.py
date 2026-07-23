@@ -29,6 +29,14 @@ from pytest_homeassistant_custom_component.common import MockUser, async_capture
 if TYPE_CHECKING:
     from custom_components.geofence_journal.export import ExportRequest
     from custom_components.geofence_journal.maintenance import ExportResponse
+    from custom_components.geofence_journal.resource_catalog import (
+        DeleteResourceRequest,
+        GetResourceRequest,
+        ListResourcesRequest,
+        ResourceDeleteResponse,
+        ResourceGetResponse,
+        ResourceListResponse,
+    )
     from custom_components.geofence_journal.storage.maintenance import (
         CompactResult,
         PurgeResult,
@@ -75,6 +83,24 @@ class EventBackend:
         raise NotImplementedError
 
     async def async_upsert_rule(self, request: UpsertRuleRequest) -> ResourceResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_list_resources(
+        self, request: ListResourcesRequest
+    ) -> ResourceListResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_get_resource(
+        self, request: GetResourceRequest
+    ) -> ResourceGetResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_delete_resource(
+        self, request: DeleteResourceRequest
+    ) -> ResourceDeleteResponse:
         _ = request
         raise NotImplementedError
 

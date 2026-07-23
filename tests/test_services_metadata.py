@@ -71,6 +71,9 @@ EXPECTED_FIELDS: Final[dict[str, frozenset[str]]] = {
         "enter_confirmation_seconds exit_confirmation_seconds cooldown_seconds",
         "max_gps_accuracy_meters enabled",
     ),
+    "list_resources": _names("resource_type include_disabled"),
+    "get_resource": _names("resource_type resource_id"),
+    "delete_resource": _names("resource_type resource_id confirm"),
     "add_event": _names(
         "journal_id tracker_id place_id occurred_at latitude longitude accuracy_m note"
     ),
@@ -86,6 +89,9 @@ REQUIRED_FIELDS: Final[dict[str, frozenset[str]]] = {
     "upsert_place": _names("name source_type"),
     "upsert_journal": _names("name"),
     "upsert_rule": _names("name tracker_id place_id journal_id"),
+    "list_resources": frozenset(),
+    "get_resource": _names("resource_type resource_id"),
+    "delete_resource": _names("resource_type resource_id confirm"),
     "add_event": _names("journal_id tracker_id place_id occurred_at"),
     "exclude_event": _names("event_id"),
     "restore_event": _names("event_id"),
@@ -105,8 +111,11 @@ SELECTOR_BY_FIELD: Final[dict[str, str]] = {
             ),
         ),
         ("entity", _names("entity_id zone_entity_id")),
-        ("select", _names("kind source_type")),
-        ("boolean", _names("enabled include_coordinates dry_run confirm")),
+        ("select", _names("kind source_type resource_type")),
+        (
+            "boolean",
+            _names("enabled include_disabled include_coordinates dry_run confirm"),
+        ),
         ("datetime", _names("occurred_at start_at end_at before")),
         (
             "number",
@@ -232,6 +241,10 @@ def test_service_and_entity_translations_cover_the_metadata_contract() -> None:
             "tracker_kind.options.device_tracker",
             "place_source.options.coordinates",
             "place_source.options.ha_zone",
+            "resource_type.options.tracker",
+            "resource_type.options.place",
+            "resource_type.options.journal",
+            "resource_type.options.rule",
         )
 
 

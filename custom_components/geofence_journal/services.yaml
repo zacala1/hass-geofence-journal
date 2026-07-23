@@ -170,6 +170,63 @@ upsert_rule:
       selector:
         boolean: {}
 
+list_resources:
+  fields:
+    resource_type:
+      selector:
+        select:
+          options:
+            - tracker
+            - place
+            - journal
+            - rule
+          translation_key: resource_type
+    include_disabled:
+      default: true
+      selector:
+        boolean: {}
+
+get_resource:
+  fields:
+    resource_type:
+      required: true
+      selector:
+        select:
+          options:
+            - tracker
+            - place
+            - journal
+            - rule
+          translation_key: resource_type
+    resource_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000001"
+      selector:
+        text: {}
+
+delete_resource:
+  fields:
+    resource_type:
+      required: true
+      selector:
+        select:
+          options:
+            - tracker
+            - place
+            - journal
+            - rule
+          translation_key: resource_type
+    resource_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000001"
+      selector:
+        text: {}
+    confirm:
+      required: true
+      default: false
+      selector:
+        boolean: {}
+
 add_event:
   fields:
     journal_id:

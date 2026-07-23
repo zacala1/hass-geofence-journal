@@ -21,10 +21,10 @@ from .maintenance import (
     UpsertTrackerRequest,
     transition_event_payload,
 )
+from .resource_catalog import ResourceCatalogError
+from .service_actions import SERVICE_ACTIONS, ServiceAction
 from .service_dispatch import (
     EVENT_JOURNAL,
-    SERVICE_ACTIONS,
-    ServiceAction,
     ServicesBackend,
     async_dispatch_service,
     async_fire_journal_event,
@@ -90,6 +90,7 @@ def _service_handler(
             CheckpointBusyError,
             PurgeConfirmationError,
             ResetConfirmationError,
+            ResourceCatalogError,
             sqlite3.IntegrityError,
         ) as error:
             raise ServiceValidationError(str(error)) from error

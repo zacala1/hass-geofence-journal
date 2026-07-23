@@ -14,6 +14,14 @@ from custom_components.geofence_journal.maintenance import (
     UpsertRuleRequest,
     UpsertTrackerRequest,
 )
+from custom_components.geofence_journal.resource_catalog import (
+    DeleteResourceRequest,
+    GetResourceRequest,
+    ListResourcesRequest,
+    ResourceDeleteResponse,
+    ResourceGetResponse,
+    ResourceListResponse,
+)
 from custom_components.geofence_journal.services import (
     async_register_services,
     async_unregister_services,
@@ -46,6 +54,9 @@ EXPECTED_SERVICES: Final = {
     "upsert_place",
     "upsert_journal",
     "upsert_rule",
+    "list_resources",
+    "get_resource",
+    "delete_resource",
     "add_event",
     "exclude_event",
     "restore_event",
@@ -76,6 +87,24 @@ class RegistrationBackend:
 
     async def async_upsert_rule(self, request: UpsertRuleRequest) -> ResourceResponse:
         return ResourceResponse(resource_id=request.resource_id or RESOURCE_ID)
+
+    async def async_list_resources(
+        self, request: ListResourcesRequest
+    ) -> ResourceListResponse:
+        _ = request
+        return ResourceListResponse(())
+
+    async def async_get_resource(
+        self, request: GetResourceRequest
+    ) -> ResourceGetResponse:
+        _ = request
+        raise NotImplementedError
+
+    async def async_delete_resource(
+        self, request: DeleteResourceRequest
+    ) -> ResourceDeleteResponse:
+        _ = request
+        raise NotImplementedError
 
     async def async_add_event(
         self, request: AddEventRequest, user_id: str | None

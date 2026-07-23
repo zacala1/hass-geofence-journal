@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, final
 
 from anyio.to_thread import run_sync
 
+import custom_components.geofence_journal.resource_catalog as catalog
+
 from .export import (
     ExportArtifact,
     ExportClock,
@@ -54,6 +56,7 @@ from .storage.maintenance import (
     purge_events,
     reset_database,
 )
+from .storage.resource_catalog import delete_resource, get_resource, list_resources
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -133,6 +136,41 @@ class SQLiteManagementBackend:
         async with self._coordinator.pause_and_drain():
             return await async_upsert_rule_resource(
                 self._store, self._clock, self._settings, request
+            )
+
+    async def async_list_resources(
+        self, request: catalog.ListResourcesRequest
+    ) -> catalog.ResourceListResponse:
+        """List configured resources from an independent read snapshot."""
+        resources = await self._store.async_run_read_operation(
+            lambda connection: list_resources(
+                connection,
+                request.resource_type,
+                include_disabled=request.include_disabled,
+            )
+        )
+        return catalog.ResourceListResponse(resources)
+
+    async def async_get_resource(
+        self, request: catalog.GetResourceRequest
+    ) -> catalog.ResourceGetResponse:
+        """Read one configured resource from an independent snapshot."""
+        resource = await self._store.async_run_read_operation(
+            lambda connection: get_resource(
+                connection, request.resource_type, str(request.resource_id)
+            )
+        )
+        return catalog.ResourceGetResponse(resource)
+
+    async def async_delete_resource(
+        self, request: catalog.DeleteResourceRequest
+    ) -> catalog.ResourceDeleteResponse:
+        """Pause and rebuild observations around one configuration delete."""
+        async with self._coordinator.pause_and_drain():
+            return await self._store.async_run_operation(
+                lambda connection: delete_resource(
+                    connection, request.resource_type, str(request.resource_id)
+                )
             )
 
     async def async_add_event(

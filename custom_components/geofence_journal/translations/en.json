@@ -34,6 +34,14 @@
         "coordinates": "Fixed coordinates",
         "ha_zone": "Home Assistant zone"
       }
+    },
+    "resource_type": {
+      "options": {
+        "tracker": "Tracker",
+        "place": "Place",
+        "journal": "Journal",
+        "rule": "Recording rule"
+      }
     }
   },
   "services": {
@@ -166,6 +174,52 @@
         "enabled": {
           "name": "Enabled",
           "description": "Whether the rule actively evaluates tracker observations."
+        }
+      }
+    },
+    "list_resources": {
+      "name": "List resources",
+      "description": "Lists configured resources, including disabled resources by default.",
+      "fields": {
+        "resource_type": {
+          "name": "Resource type",
+          "description": "Optional resource type filter. Leave empty to list the complete catalog."
+        },
+        "include_disabled": {
+          "name": "Include disabled",
+          "description": "Include disabled resources in the result."
+        }
+      }
+    },
+    "get_resource": {
+      "name": "Get resource",
+      "description": "Returns one configured resource by type and stable UUID.",
+      "fields": {
+        "resource_type": {
+          "name": "Resource type",
+          "description": "Type of the requested resource."
+        },
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Stable UUID of the requested resource."
+        }
+      }
+    },
+    "delete_resource": {
+      "name": "Delete resource",
+      "description": "Deletes unreferenced configuration and rebuilds active listeners.",
+      "fields": {
+        "resource_type": {
+          "name": "Resource type",
+          "description": "Type of the resource to delete."
+        },
+        "resource_id": {
+          "name": "Resource ID",
+          "description": "Stable UUID of the resource to delete."
+        },
+        "confirm": {
+          "name": "Confirm deletion",
+          "description": "Must be enabled explicitly. Referenced resources remain protected."
         }
       }
     },
