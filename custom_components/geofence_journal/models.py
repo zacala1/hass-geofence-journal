@@ -128,6 +128,7 @@ class JournalDefinition:
     journal_id: JournalId
     name: str
     enabled: bool
+    retention_days: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

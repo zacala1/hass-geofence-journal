@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         ResourceGetResponse,
         ResourceListResponse,
     )
+    from custom_components.geofence_journal.retention import PurgeRetentionRequest
     from custom_components.geofence_journal.storage.maintenance import (
         CompactResult,
         PurgeResult,
@@ -128,6 +129,12 @@ class EventBackend:
         raise NotImplementedError
 
     async def async_purge_events(self, request: PurgeEventsRequest) -> PurgeResult:
+        _ = request
+        raise NotImplementedError
+
+    async def async_purge_retention(
+        self, request: PurgeRetentionRequest
+    ) -> PurgeResult:
         _ = request
         raise NotImplementedError
 

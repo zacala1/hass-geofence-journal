@@ -114,10 +114,19 @@ def upsert_journal(
     """Create or replace a journal definition."""
     stamp = utc_text(timestamp)
     _ = connection.execute(
-        """INSERT INTO journals (id,name,enabled,created_at,updated_at)
-        VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-        name=excluded.name,enabled=excluded.enabled,updated_at=excluded.updated_at""",
-        (journal.journal_id, journal.name, int(journal.enabled), stamp, stamp),
+        """INSERT INTO journals
+        (id,name,enabled,retention_days,created_at,updated_at)
+        VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name,enabled=excluded.enabled,
+        retention_days=excluded.retention_days,updated_at=excluded.updated_at""",
+        (
+            journal.journal_id,
+            journal.name,
+            int(journal.enabled),
+            journal.retention_days,
+            stamp,
+            stamp,
+        ),
     )
 
 

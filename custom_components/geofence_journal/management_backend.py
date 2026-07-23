@@ -10,6 +10,7 @@ from anyio.to_thread import run_sync
 
 import custom_components.geofence_journal.resource_catalog as catalog
 
+from .disk_space import require_compact_space, require_export_space
 from .export import (
     ExportArtifact,
     ExportClock,
@@ -42,6 +43,7 @@ from .management_resources import (
     async_upsert_rule_resource,
     async_upsert_tracker_resource,
 )
+from .management_retention import async_purge_configured_retention
 from .models import JournalId
 from .storage.errors import StorageError
 from .storage.events import MissingEventReferenceError
@@ -63,6 +65,7 @@ if TYPE_CHECKING:
     from datetime import datetime
     from uuid import UUID
 
+    from .retention import PurgeRetentionRequest
     from .settings import Settings
     from .storage.async_adapter import AsyncSQLiteStore
     from .storage.db_types import SQLConnection
@@ -83,16 +86,6 @@ class ManagementBackendDependencies:
 @final
 class SQLiteManagementBackend:
     """Run typed management operations through one serialized SQLite store."""
-
-    __slots__ = (
-        "_clock",
-        "_coordinator",
-        "_exports",
-        "_on_event",
-        "_schedule_export_cleanup",
-        "_settings",
-        "_store",
-    )
 
     def __init__(
         self, store: AsyncSQLiteStore, dependencies: ManagementBackendDependencies
@@ -218,6 +211,9 @@ class SQLiteManagementBackend:
             }
         )
         try:
+            await run_sync(
+                require_export_space, self._settings.database_path, artifact.path
+            )
             count = await self._store.async_run_read_operation(
                 lambda connection: export_journal_csv(
                     connection, artifact.path, effective
@@ -250,8 +246,17 @@ class SQLiteManagementBackend:
         async with self._coordinator.pause_and_drain():
             return await self._store.async_run_operation(operation)
 
+    async def async_purge_retention(
+        self, request: PurgeRetentionRequest
+    ) -> PurgeResult:
+        """Explicitly purge using one journal's configured retention period."""
+        return await async_purge_configured_retention(
+            self._store, self._coordinator, self._clock, request
+        )
+
     async def async_compact_database(self) -> CompactResult:
         """Pause observations around WAL checkpoint and VACUUM work."""
+        await run_sync(require_compact_space, self._settings.database_path)
         async with self._coordinator.pause_and_drain():
             return await self._store.async_run_exclusive_operation(compact_database)
 

@@ -109,6 +109,14 @@ upsert_journal:
       default: true
       selector:
         boolean: {}
+    retention_days:
+      selector:
+        number:
+          min: 1
+          max: 36500
+          step: 1
+          unit_of_measurement: d
+          mode: box
 
 upsert_rule:
   fields:
@@ -332,6 +340,22 @@ purge_events:
       example: "2026-01-01 00:00:00+00:00"
       selector:
         datetime: {}
+    journal_id:
+      required: true
+      example: "00000000-0000-4000-8000-000000000003"
+      selector:
+        text: {}
+    dry_run:
+      default: true
+      selector:
+        boolean: {}
+    confirm:
+      default: false
+      selector:
+        boolean: {}
+
+purge_retention:
+  fields:
     journal_id:
       required: true
       example: "00000000-0000-4000-8000-000000000003"

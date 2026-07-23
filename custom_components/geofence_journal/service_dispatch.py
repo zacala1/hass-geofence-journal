@@ -22,6 +22,7 @@ from .maintenance import (
     UpsertTrackerRequest,
     journal_event_data,
 )
+from .retention import PurgeRetentionRequest
 from .service_actions import (
     CATALOG_ACTIONS,
     EVENT_ACTIONS,
@@ -112,6 +113,12 @@ class ServicesBackend(Protocol):
 
     async def async_purge_events(self, request: PurgeEventsRequest) -> PurgeResult:
         """Dry-run or permanently purge old events."""
+        ...
+
+    async def async_purge_retention(
+        self, request: PurgeRetentionRequest
+    ) -> PurgeResult:
+        """Explicitly purge events older than a configured retention period."""
         ...
 
     async def async_compact_database(self) -> CompactResult:
@@ -206,13 +213,12 @@ async def _dispatch_lifecycle(
         response = await backend.async_purge_events(
             PurgeEventsRequest.model_validate(call.data)
         )
-        return {
-            "matched_events": response.matched_events,
-            "matched_revisions": response.matched_revisions,
-            "deleted_events": response.deleted_events,
-            "deleted_revisions": response.deleted_revisions,
-            "dry_run": response.dry_run,
-        }
+        return _purge_response(response)
+    if action is ServiceAction.PURGE_RETENTION:
+        response = await backend.async_purge_retention(
+            PurgeRetentionRequest.model_validate(call.data)
+        )
+        return _purge_response(response)
     if action is ServiceAction.COMPACT_DATABASE:
         response = await backend.async_compact_database()
         return {
@@ -239,3 +245,13 @@ async def _dispatch_lifecycle(
             "schema_version": response.schema_version,
         }
     raise RuntimeError(action)
+
+
+def _purge_response(response: PurgeResult) -> ServiceResponse:
+    return {
+        "matched_events": response.matched_events,
+        "matched_revisions": response.matched_revisions,
+        "deleted_events": response.deleted_events,
+        "deleted_revisions": response.deleted_revisions,
+        "dry_run": response.dry_run,
+    }

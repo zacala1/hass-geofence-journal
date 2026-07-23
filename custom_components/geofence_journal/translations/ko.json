@@ -128,6 +128,10 @@
         "enabled": {
           "name": "활성화",
           "description": "이 저널이 활성 기록 규칙의 이벤트를 받을지 여부입니다."
+        },
+        "retention_days": {
+          "name": "보존 기간",
+          "description": "명시적 보존기간 정리 작업에서만 사용하는 선택 사항인 일수입니다. 자동 삭제는 예약되지 않습니다."
         }
       }
     },
@@ -333,6 +337,24 @@
         }
       }
     },
+    "purge_retention": {
+      "name": "설정된 보존기간 정리",
+      "description": "선택한 저널의 보존기간보다 오래된 이벤트를 계산하거나 영구 삭제합니다. 자동으로 실행되지 않습니다.",
+      "fields": {
+        "journal_id": {
+          "name": "저널 ID",
+          "description": "보존기간이 설정된 저널의 고정 UUID입니다."
+        },
+        "dry_run": {
+          "name": "시험 실행",
+          "description": "데이터를 삭제하지 않고 일치하는 이벤트와 수정 기록 수를 보고합니다."
+        },
+        "confirm": {
+          "name": "영구 삭제 확인",
+          "description": "시험 실행이 아닌 작업에는 반드시 활성화해야 합니다."
+        }
+      }
+    },
     "compact_database": {
       "name": "데이터베이스 압축",
       "description": "SQLite WAL을 체크포인트한 다음 VACUUM을 실행하여 데이터베이스를 압축합니다.",
@@ -364,6 +386,9 @@
     },
     "constraint_violation": {
       "message": "참조 데이터의 일관성을 유지해야 하므로 데이터베이스가 이 변경을 거부했습니다."
+    },
+    "insufficient_disk_space": {
+      "message": "디스크 여유 공간이 부족합니다(사용 가능 {available}바이트, 필요 {required}바이트)."
     },
     "storage_unavailable": {
       "message": "Geofence Journal 저장소를 일시적으로 사용할 수 없습니다."

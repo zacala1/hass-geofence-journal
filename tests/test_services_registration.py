@@ -40,6 +40,7 @@ if TYPE_CHECKING:
         ResetDatabaseRequest,
         RestoreEventRequest,
     )
+    from custom_components.geofence_journal.retention import PurgeRetentionRequest
     from custom_components.geofence_journal.storage.maintenance import (
         CompactResult,
         PurgeResult,
@@ -62,6 +63,7 @@ EXPECTED_SERVICES: Final = {
     "restore_event",
     "export_journal",
     "purge_events",
+    "purge_retention",
     "compact_database",
     "reset_database",
 }
@@ -129,6 +131,12 @@ class RegistrationBackend:
         raise NotImplementedError
 
     async def async_purge_events(self, request: PurgeEventsRequest) -> PurgeResult:
+        _ = request
+        raise NotImplementedError
+
+    async def async_purge_retention(
+        self, request: PurgeRetentionRequest
+    ) -> PurgeResult:
         _ = request
         raise NotImplementedError
 

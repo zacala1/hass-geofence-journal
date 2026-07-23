@@ -22,6 +22,7 @@ class ServiceAction(StrEnum):
     RESTORE_EVENT = "restore_event"
     EXPORT_JOURNAL = "export_journal"
     PURGE_EVENTS = "purge_events"
+    PURGE_RETENTION = "purge_retention"
     COMPACT_DATABASE = "compact_database"
     RESET_DATABASE = "reset_database"
 

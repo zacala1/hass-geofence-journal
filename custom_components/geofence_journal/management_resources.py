@@ -116,7 +116,10 @@ async def async_upsert_journal_resource(
     """Build and persist one journal at a stable or generated identifier."""
     identifier = request.resource_id or uuid4()
     journal = JournalDefinition(
-        JournalId(str(identifier)), request.name, request.enabled
+        JournalId(str(identifier)),
+        request.name,
+        request.enabled,
+        request.retention_days,
     )
     timestamp = clock.utc_now()
     await store.async_run_operation(

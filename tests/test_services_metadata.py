@@ -65,7 +65,7 @@ EXPECTED_FIELDS: Final[dict[str, frozenset[str]]] = {
         "resource_id name source_type zone_entity_id latitude longitude",
         "radius_meters exit_margin_meters enabled",
     ),
-    "upsert_journal": _names("resource_id name enabled"),
+    "upsert_journal": _names("resource_id name enabled retention_days"),
     "upsert_rule": _names(
         "resource_id name tracker_id place_id journal_id",
         "enter_confirmation_seconds exit_confirmation_seconds cooldown_seconds",
@@ -81,6 +81,7 @@ EXPECTED_FIELDS: Final[dict[str, frozenset[str]]] = {
     "restore_event": _names("event_id reason"),
     "export_journal": _names("journal_id start_at end_at include_coordinates"),
     "purge_events": _names("before journal_id dry_run confirm"),
+    "purge_retention": _names("journal_id dry_run confirm"),
     "compact_database": frozenset(),
     "reset_database": _names("confirmation"),
 }
@@ -97,6 +98,7 @@ REQUIRED_FIELDS: Final[dict[str, frozenset[str]]] = {
     "restore_event": _names("event_id"),
     "export_journal": _names("journal_id"),
     "purge_events": _names("before journal_id"),
+    "purge_retention": _names("journal_id"),
     "compact_database": frozenset(),
     "reset_database": _names("confirmation"),
 }
@@ -122,7 +124,7 @@ SELECTOR_BY_FIELD: Final[dict[str, str]] = {
             _names(
                 "latitude longitude radius_meters exit_margin_meters",
                 "enter_confirmation_seconds exit_confirmation_seconds cooldown_seconds",
-                "max_gps_accuracy_meters accuracy_m",
+                "max_gps_accuracy_meters accuracy_m retention_days",
             ),
         ),
     )
@@ -254,6 +256,7 @@ def test_service_and_entity_translations_cover_the_metadata_contract() -> None:
             "invalid_service_data.message",
             "operation_rejected.message",
             "constraint_violation.message",
+            "insufficient_disk_space.message",
             "storage_unavailable.message",
             "database_failure.message",
             "filesystem_failure.message",

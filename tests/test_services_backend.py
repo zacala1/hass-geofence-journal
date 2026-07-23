@@ -129,6 +129,7 @@ def test_management_backend_public_contract_is_available() -> None:
         "async_exclude_event",
         "async_export_journal",
         "async_purge_events",
+        "async_purge_retention",
         "async_reset_database",
         "async_restore_event",
     }

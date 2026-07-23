@@ -14,6 +14,7 @@ from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from pydantic import ValidationError
 
 from .const import DOMAIN
+from .disk_space import InsufficientDiskSpaceError
 from .maintenance import (
     UpsertJournalRequest,
     UpsertPlaceRequest,
@@ -22,6 +23,7 @@ from .maintenance import (
     transition_event_payload,
 )
 from .resource_catalog import ResourceCatalogError
+from .retention import RetentionNotConfiguredError
 from .service_actions import SERVICE_ACTIONS, ServiceAction
 from .service_dispatch import (
     EVENT_JOURNAL,
@@ -96,6 +98,7 @@ def _service_handler(
             PurgeConfirmationError,
             ResetConfirmationError,
             ResourceCatalogError,
+            RetentionNotConfiguredError,
         ) as error:
             detail = str(error)
             raise _translated_service_error(
@@ -106,6 +109,16 @@ def _service_handler(
         except sqlite3.IntegrityError as error:
             detail = "database constraints rejected the requested operation"
             raise _translated_service_error(detail, "constraint_violation") from error
+        except InsufficientDiskSpaceError as error:
+            detail = str(error)
+            raise _translated_service_error(
+                detail,
+                "insufficient_disk_space",
+                {
+                    "available": str(error.available_bytes),
+                    "required": str(error.required_bytes),
+                },
+            ) from error
         except StorageError as error:
             detail = "journal storage is temporarily unavailable"
             raise _translated_service_error(detail, "storage_unavailable") from error

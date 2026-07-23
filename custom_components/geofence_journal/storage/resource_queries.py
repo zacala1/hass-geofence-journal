@@ -46,7 +46,7 @@ def list_active_resources(
     rows = connection.execute(
         """SELECT t.id,t.entity_id,t.display_name,t.tracker_kind,
         p.id,p.name,p.source_type,p.zone_entity_id,p.latitude,p.longitude,p.radius_m,
-        p.exit_margin_m,j.id,j.name,r.id,r.enter_confirmation_seconds,
+        p.exit_margin_m,j.id,j.name,j.retention_days,r.id,r.enter_confirmation_seconds,
         r.exit_confirmation_seconds,r.cooldown_seconds,r.max_accuracy_m
         FROM recording_rules r
         JOIN trackers t ON t.id=r.tracker_id
@@ -95,25 +95,30 @@ def _configured_resource(row: SQLiteRow) -> ConfiguredResources:
             journal_id=journal_id,
             name=required_text(row[13], field="journals.name"),
             enabled=True,
+            retention_days=(
+                None
+                if row[14] is None
+                else required_integer(row[14], field="journals.retention_days")
+            ),
         ),
         rule=RuleDefinition(
-            rule_id=RuleId(required_text(row[14], field="recording_rules.id")),
+            rule_id=RuleId(required_text(row[15], field="recording_rules.id")),
             tracker_id=tracker_id,
             place_id=place_id,
             journal_id=journal_id,
             enabled=True,
             enter_confirmation_seconds=Seconds(
-                required_integer(row[15], field="enter_confirmation")
+                required_integer(row[16], field="enter_confirmation")
             ),
             exit_confirmation_seconds=Seconds(
-                required_integer(row[16], field="exit_confirmation")
+                required_integer(row[17], field="exit_confirmation")
             ),
-            cooldown_seconds=Seconds(required_integer(row[17], field="cooldown")),
+            cooldown_seconds=Seconds(required_integer(row[18], field="cooldown")),
             exit_margin_meters=Meters(
                 _required_float(row[11], field="places.exit_margin_m")
             ),
             max_gps_accuracy_meters=Meters(
-                _required_float(row[18], field="max_accuracy_m")
+                _required_float(row[19], field="max_accuracy_m")
             ),
         ),
     )

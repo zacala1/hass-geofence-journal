@@ -7,6 +7,7 @@ from uuid import UUID
 
 import pytest
 from custom_components.geofence_journal import management_backend
+from custom_components.geofence_journal.disk_space import InsufficientDiskSpaceError
 from custom_components.geofence_journal.export import (
     ExportArtifact,
     ExportRegistry,
@@ -221,4 +222,32 @@ async def test_invalid_invariants_missing_rows_and_failed_export_cleanup(
 
     assert scheduled == []
     assert observed == []
+    assert exports.cleanup_orphaned_files() == 0
+
+
+async def test_disk_preflight_cleans_export_and_avoids_compaction_pause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    backend, store, exports, coordinator, scheduled, _observed = await _open_backend(
+        tmp_path
+    )
+    await _seed(backend)
+    pauses_before = coordinator.pauses
+
+    def fail_space(*_args: object) -> None:
+        raise InsufficientDiskSpaceError(
+            available_bytes=100,
+            required_bytes=200,
+        )
+
+    monkeypatch.setattr(management_backend, "require_export_space", fail_space)
+    with pytest.raises(InsufficientDiskSpaceError):
+        _ = await backend.async_export_journal(ExportRequest(journal_id=JOURNAL_ID))
+    monkeypatch.setattr(management_backend, "require_compact_space", fail_space)
+    with pytest.raises(InsufficientDiskSpaceError):
+        _ = await backend.async_compact_database()
+    await store.async_close()
+
+    assert coordinator.pauses == pauses_before
+    assert scheduled == []
     assert exports.cleanup_orphaned_files() == 0

@@ -37,6 +37,7 @@ from pytest_homeassistant_custom_component.common import MockUser, async_capture
 if TYPE_CHECKING:
     from custom_components.geofence_journal import resource_catalog
     from custom_components.geofence_journal.export import ExportRequest
+    from custom_components.geofence_journal.retention import PurgeRetentionRequest
     from homeassistant.core import HomeAssistant, ServiceResponse
 
 NOW: Final = datetime(2026, 7, 18, 12, tzinfo=UTC)
@@ -140,6 +141,11 @@ class DispatchBackend:
             deleted_revisions=0,
             dry_run=True,
         )
+
+    async def async_purge_retention(
+        self, request: PurgeRetentionRequest
+    ) -> PurgeResult:
+        return PurgeResult(0, 0, 0, 0, dry_run=request.dry_run)
 
     async def async_compact_database(self) -> CompactResult:
         self.calls.append("compact")
