@@ -16,6 +16,18 @@ if TYPE_CHECKING:
 
 IGNORED_CACHE_SUFFIXES: Final = frozenset({".pyc", ".pyo"})
 TRANSLATION_PATH_PARTS: Final = 2
+BRAND_FILENAMES: Final = frozenset(
+    {
+        "dark_icon.png",
+        "dark_icon@2x.png",
+        "dark_logo.png",
+        "dark_logo@2x.png",
+        "icon.png",
+        "icon@2x.png",
+        "logo.png",
+        "logo@2x.png",
+    }
+)
 
 
 def validated_release_sources(root: Path, integration: Path) -> tuple[Path, ...]:
@@ -49,6 +61,12 @@ def _is_runtime_source(relative: Path) -> bool:
     if relative.suffix == ".py":
         return True
     if relative.parts in {("manifest.json",), ("services.yaml",)}:
+        return True
+    if (
+        len(relative.parts) == TRANSLATION_PATH_PARTS
+        and relative.parts[0] == "brand"
+        and relative.name in BRAND_FILENAMES
+    ):
         return True
     return (
         len(relative.parts) == TRANSLATION_PATH_PARTS

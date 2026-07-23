@@ -221,6 +221,17 @@ def test_build_release_rejects_unexpected_runtime_file(
     assert not output.exists()
 
 
+def test_build_release_rejects_an_unknown_brand_asset(tmp_path: Path) -> None:
+    root = release_root(tmp_path)
+    source = (
+        root / "custom_components" / "geofence_journal" / "brand" / "unexpected.png"
+    )
+    _ = source.write_bytes(b"\x89PNG\r\n\x1a\nunexpected")
+
+    with pytest.raises(ReleaseCheckError, match="unexpected release source"):
+        _ = build_release(root, tmp_path / "dist-brand")
+
+
 def test_check_release_rejects_alpha_version(tmp_path: Path) -> None:
     root = release_root(tmp_path)
     for relative in (

@@ -37,6 +37,8 @@ REQUIRED_INTEGRATION_FILES: Final = (
     "__init__.py",
     "backup.py",
     "binary_sensor.py",
+    "brand/icon.png",
+    "brand/icon@2x.png",
     "config_flow.py",
     "const.py",
     "manifest.json",

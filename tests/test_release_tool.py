@@ -39,7 +39,9 @@ def commit_release_root(root: Path, message: str = "fixture") -> None:
 def release_root(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     integration = root / "custom_components" / "geofence_journal"
+    brand = integration / "brand"
     translations = integration / "translations"
+    brand.mkdir(parents=True)
     translations.mkdir(parents=True)
     (root / ".github" / "workflows").mkdir(parents=True)
     _ = (root / ".gitignore").write_text(
@@ -108,6 +110,8 @@ requires-dist = [
         "translations/ko.json",
     ):
         _ = (integration / relative).write_text("{}\n", encoding="utf-8")
+    for filename in ("icon.png", "icon@2x.png"):
+        _ = (brand / filename).write_bytes(b"\x89PNG\r\n\x1a\nfixture")
     _run_git(root, "init", "--quiet")
     _run_git(root, "config", "user.name", "Release Fixture")
     _run_git(root, "config", "user.email", "release@example.invalid")
@@ -214,6 +218,8 @@ def test_build_release_creates_reproducible_install_tree(tmp_path: Path) -> None
         members = archive.infolist()
     assert "manifest.json" in names
     assert "backup.py" in names
+    assert "brand/icon.png" in names
+    assert "brand/icon@2x.png" in names
     assert "translations/ko.json" in names
     assert all(not name.startswith("custom_components/") for name in names)
     assert all("__pycache__" not in name for name in names)

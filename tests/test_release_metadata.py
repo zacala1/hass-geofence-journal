@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Final, TypedDict
 
+from PIL import Image
 from pydantic import TypeAdapter
 
 ROOT: Final = Path(__file__).parents[1]
@@ -106,6 +107,17 @@ def test_hacs_metadata_targets_the_supported_home_assistant_release() -> None:
         "2026.7.0",
         True,
     )
+
+
+def test_local_brand_icons_match_home_assistant_image_contract() -> None:
+    brand = ROOT / "custom_components" / "geofence_journal" / "brand"
+
+    for filename, size in (("icon.png", 256), ("icon@2x.png", 512)):
+        with Image.open(brand / filename) as icon:
+            assert icon.format == "PNG"
+            assert icon.mode == "RGBA"
+            assert icon.size == (size, size)
+            assert icon.getchannel("A").getpixel((0, 0)) == 0
 
 
 def test_readme_documents_the_release_safety_contract() -> None:
@@ -214,6 +226,7 @@ def test_release_workflow_verifies_the_tag_before_publishing() -> None:
     assert "--json isLatest" not in workflow
     assert "latestRelease{tagName}" in workflow
     assert 'test "${latest_tag}" != "${GITHUB_REF_NAME}"' in workflow
+    assert "INPUT_IGNORE" not in workflow
     assert workflow.index("-m scripts.release check") < workflow.index(
         "-m scripts.release build"
     )
@@ -235,6 +248,7 @@ def test_validation_workflow_pins_official_validator_containers() -> None:
     # Then: both official validator images are immutable and scheduled.
     assert expected_images <= {image for image in expected_images if image in workflow}
     assert "INPUT_CATEGORY: integration" in workflow
+    assert "INPUT_IGNORE" not in workflow
     assert "schedule:" in workflow
 
 
