@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, final
 import anyio
 from anyio.to_thread import run_sync
 
-from .errors import StorageClosedError
+from .errors import StorageBusyError, StorageClosedError
+from .readers import run_read_operation
 from .repository import DEFAULT_BUSY_TIMEOUT_MS, SQLiteStore
 
 if TYPE_CHECKING:
@@ -28,8 +29,12 @@ class AsyncSQLiteStore:
         self, path: Path, *, busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS
     ) -> None:
         """Configure the synchronous store and lifecycle gate."""
+        self._path = path
+        self._busy_timeout_ms = busy_timeout_ms
         self._store = SQLiteStore(path, busy_timeout_ms=busy_timeout_ms)
         self._gate = anyio.Lock()
+        self._close_gate = anyio.Lock()
+        self._reader_slot = anyio.CapacityLimiter(1)
         self._opened = False
         self._closing = False
 
@@ -84,17 +89,45 @@ class AsyncSQLiteStore:
             self._ensure_accepting()
             return await run_sync(lambda: self._store.run_operation(operation))
 
+    async def async_run_read_operation[T](
+        self, operation: Callable[[SQLConnection], T]
+    ) -> T:
+        """Run one independent read snapshot without blocking runtime writes."""
+        try:
+            self._reader_slot.acquire_nowait()
+        except anyio.WouldBlock as error:
+            raise StorageBusyError(operation="read snapshot") from error
+        try:
+            async with self._gate:
+                self._ensure_accepting()
+            return await run_sync(
+                lambda: run_read_operation(self._path, self._busy_timeout_ms, operation)
+            )
+        finally:
+            self._reader_slot.release()
+
+    async def async_run_exclusive_operation[T](
+        self, operation: Callable[[SQLConnection], T]
+    ) -> T:
+        """Wait for readers, then run one lifecycle-exclusive operation."""
+        async with self._reader_slot, self._gate:
+            self._ensure_accepting()
+            return await run_sync(lambda: self._store.run_operation(operation))
+
     async def async_close(self) -> None:
         """Stop accepting work, drain the gate, and close off-loop."""
-        async with self._gate:
-            self._closing = True
+        async with self._close_gate:
+            async with self._gate:
+                self._closing = True
             try:
-                if self._opened:
-                    with anyio.CancelScope(shield=True):
-                        await run_sync(self._store.close)
-                    self._opened = False
+                async with self._reader_slot, self._gate:
+                    if self._opened:
+                        with anyio.CancelScope(shield=True):
+                            await run_sync(self._store.close)
+                        self._opened = False
             finally:
-                self._closing = False
+                async with self._gate:
+                    self._closing = False
 
     def _ensure_accepting(self) -> None:
         if not self._opened or self._closing:

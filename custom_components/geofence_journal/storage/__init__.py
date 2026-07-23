@@ -4,6 +4,7 @@ from .async_adapter import AsyncSQLiteStore
 from .errors import (
     DatabaseSchemaError,
     InjectedStorageFaultError,
+    StorageBusyError,
     StorageClosedError,
     UnsupportedSchemaVersionError,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "InjectedStorageFaultError",
     "RuntimeStateRecord",
     "SQLiteStore",
+    "StorageBusyError",
     "StorageClosedError",
     "StorageDiagnostics",
     "TransitionResult",

@@ -10,6 +10,24 @@ class StorageError(Exception):
 
 
 @final
+class StorageBusyError(StorageError):
+    """A bounded storage capability is already in use."""
+
+    __slots__ = ("operation",)
+    operation: str
+
+    def __init__(self, operation: str) -> None:
+        """Retain the rejected operation without exposing storage details."""
+        super().__init__(operation)
+        self.operation = operation
+
+    @override
+    def __str__(self) -> str:
+        """Render a stable bounded-capacity failure."""
+        return f"storage reader is busy: {self.operation}"
+
+
+@final
 class DatabaseSchemaError(StorageError):
     """Existing schema failure; exceptions require mutable traceback state."""
 

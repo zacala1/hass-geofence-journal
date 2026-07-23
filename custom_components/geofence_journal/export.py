@@ -13,16 +13,16 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from pydantic_core import PydanticCustomError
 
 from .const import STORAGE_DIRECTORY, STORAGE_INTEGRATION_DIRECTORY
+from .export_csv import encode_csv_line
 from .export_file import is_regular_file_without_links, open_verified_regular_file
 from .storage.records import utc_text
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from typing import BinaryIO
 
     from homeassistant.core import HomeAssistant
 
-    from .storage.db_types import SQLConnection, SQLiteValue
+    from .storage.db_types import SQLConnection
 
 EXPORT_LIFETIME: Final = timedelta(hours=24)
 DOWNLOAD_PREFIX: Final = "/api/geofence_journal/export"
@@ -45,7 +45,6 @@ BASE_HEADERS: Final = (
 COORDINATE_HEADERS: Final = ("latitude", "longitude", "accuracy_m")
 EXPORT_DIRECTORY_NAME: Final = "exports"
 EXPORT_ID_LENGTH: Final = 32
-SPREADSHEET_FORMULA_PREFIXES: Final = ("=", "+", "-", "@")
 NAIVE_TIME_ERROR: Final = "naive_export_time"
 NAIVE_TIME_MESSAGE: Final = "export time must be aware"
 REVERSED_INTERVAL_ERROR: Final = "reversed_export_interval"
@@ -237,7 +236,7 @@ def export_journal_csv(
     """Write a filtered UTF-8 BOM CSV and return its event count."""
     start_text = None if request.start_at is None else utc_text(request.start_at)
     end_text = None if request.end_at is None else utc_text(request.end_at)
-    rows = connection.execute(
+    cursor = connection.execute(
         """SELECT e.id,e.journal_id,j.name,e.rule_id,e.tracker_id,t.display_name,
         e.place_id,p.name,e.event_type,e.occurred_at,e.confirmed_at,e.source,
         e.status,e.note,e.latitude,e.longitude,e.accuracy_m
@@ -255,37 +254,24 @@ def export_journal_csv(
             end_text,
             end_text,
         ),
-    ).fetchall()
+    )
     headers = (
         (*BASE_HEADERS, *COORDINATE_HEADERS)
         if request.include_coordinates
         else BASE_HEADERS
     )
-    exported_rows = rows if request.include_coordinates else [row[:14] for row in rows]
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = path.with_suffix(".tmp")
+    count = 0
     try:
         with temporary_path.open("w", encoding="utf-8-sig", newline="") as output:
-            _ = output.write(_csv_line(headers))
-            for row in exported_rows:
-                _ = output.write(_csv_line(row))
+            _ = output.write(encode_csv_line(headers))
+            while (row := cursor.fetchone()) is not None:
+                exported_row = row if request.include_coordinates else row[:14]
+                _ = output.write(encode_csv_line(exported_row))
+                count += 1
         _replaced_path = temporary_path.replace(path)
     except OSError:
         temporary_path.unlink(missing_ok=True)
         raise
-    return len(rows)
-
-
-def _csv_line(values: Sequence[SQLiteValue]) -> str:
-    return ",".join(_csv_cell(value) for value in values) + "\r\n"
-
-
-def _csv_cell(value: SQLiteValue) -> str:
-    text = "" if value is None else str(value)
-    if isinstance(value, str) and value.lstrip(" \t\r\n").startswith(
-        SPREADSHEET_FORMULA_PREFIXES
-    ):
-        text = f"'{value}"
-    if any(character in text for character in (",", '"', "\r", "\n")):
-        return '"' + text.replace('"', '""') + '"'
-    return text
+    return count

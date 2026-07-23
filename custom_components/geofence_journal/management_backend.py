@@ -180,7 +180,7 @@ class SQLiteManagementBackend:
             }
         )
         try:
-            count = await self._store.async_run_operation(
+            count = await self._store.async_run_read_operation(
                 lambda connection: export_journal_csv(
                     connection, artifact.path, effective
                 )
@@ -215,12 +215,12 @@ class SQLiteManagementBackend:
     async def async_compact_database(self) -> CompactResult:
         """Pause observations around WAL checkpoint and VACUUM work."""
         async with self._coordinator.pause_and_drain():
-            return await self._store.async_run_operation(compact_database)
+            return await self._store.async_run_exclusive_operation(compact_database)
 
     async def async_reset_database(self, request: ResetDatabaseRequest) -> ResetResult:
         """Reset storage and invalidate exports inside one pause scope."""
         async with self._coordinator.pause_and_drain():
-            result = await self._store.async_run_operation(
+            result = await self._store.async_run_exclusive_operation(
                 lambda connection: reset_database(
                     connection, ResetRequest(request.confirmation)
                 )
