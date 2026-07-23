@@ -236,3 +236,13 @@ def test_validation_workflow_pins_official_validator_containers() -> None:
     assert expected_images <= {image for image in expected_images if image in workflow}
     assert "INPUT_CATEGORY: integration" in workflow
     assert "schedule:" in workflow
+
+
+def test_dependabot_monitors_actions_and_locked_python_dependencies() -> None:
+    # Given: the repository-wide automated dependency update policy.
+    policy = (ROOT / ".github" / "dependabot.yml").read_text("utf-8")
+
+    # When / Then: both executable workflows and the uv lock stay monitored.
+    assert 'package-ecosystem: "github-actions"' in policy
+    assert 'package-ecosystem: "uv"' in policy
+    assert policy.count('interval: "weekly"') == 2
